@@ -1,350 +1,284 @@
-##If you need to install stardist first
-#pip install stardist
 
+## Pip install is for google colab
+!pip install tifffile joblib tqdm tqdm_joblib
+
+
+#Import things...May have to install a few things
 import os
+import time  # For timing
 import numpy as np
 import pandas as pd
-import tifffile as tiff
-import matplotlib.pyplot as plt
 
 from skimage import io
-from skimage.measure import label, regionprops
+from skimage.measure import regionprops, label, ransac
 from skimage.transform import AffineTransform, warp, resize
+from skimage.filters import (threshold_otsu, threshold_local, gaussian)
+from skimage.morphology import (remove_small_objects, binary_closing, disk)
+from skimage.segmentation import clear_border
+from scipy.ndimage import binary_fill_holes
 from scipy.spatial import cKDTree
-from skimage.filters import threshold_otsu
+import tifffile as tiff
 
+# For parallel + progress bar
+from joblib import Parallel, delayed
+from tqdm import tqdm
+from tqdm_joblib import tqdm_joblib
 
-####################################
-# StarDist imports
-####################################
-from stardist.models import StarDist2D
-from csbdeep.utils import normalize
+##############################
+# Functions for running
+##############################
 
-####################################
-# 1) Load the StarDist model
-####################################
-# For example, the pretrained '2D_versatile_fluo' model:
-model = StarDist2D.from_pretrained('2D_versatile_fluo')
-
-############
-# Functions
-############
-def compute_thresholded_correlation(image1, image2):
+def normalize_image(image):
     """
-    Compute the Pearson correlation coefficient of two images
-    after thresholding them (e.g., via Otsu).
+    Normalize an image to the [0, 1] range for segmentation purposes.
     """
-    # If your images are float and not too large, we can directly do Otsu.
-    # Otherwise, you can pass custom thresholds as parameters.
-    thresh1 = threshold_otsu(image1)
-    thresh2 = threshold_otsu(image2)
+    return (image - np.min(image)) / (np.max(image) - np.min(image) + 1e-10)
 
-    # Convert to binary
-    bin1 = image1 > thresh1
-    bin2 = image2 > thresh2
-
-    # Flatten
-    flat1 = bin1.ravel()
-    flat2 = bin2.ravel()
-
-    # Compute correlation matrix (2x2) with np.corrcoef
-    cm = np.corrcoef(flat1, flat2)
-
-    # The off-diagonal elements [0,1] or [1,0] is the correlation coefficient
-    r = cm[0, 1]
-    return r
-
-
-def stardist_segment(image, model, prob_thresh=0.5, nms_thresh=0.4):
+def flexible_segmentation(image, sigma=0.5, min_size=100, block_size=None, offset=10):
     """
-    Use StarDist to segment nuclei in a given DAPI image.
-    Return a labeled mask (StarDist instance segmentation).
+    Perform segmentation using Gaussian blur, thresholding (global or local),
+    and morphological cleaning.
     """
-    # Typically, we normalize to a standard range for StarDist
-    # Adjust percentiles to your data if needed:
-    image_norm = normalize(image, 1, 99.8, axis=(0,1))
+    blurred = gaussian(image, sigma=sigma, preserve_range=True)
 
-    # Predict StarDist instances
-    labels, details = model.predict_instances(
-        image_norm,
-        prob_thresh=prob_thresh,
-        nms_thresh=nms_thresh
-    )
-    return labels
+    if block_size is None:
+        # Global Otsu threshold
+        thresh = threshold_otsu(blurred)
+        binary_mask = blurred > thresh
+    else:
+        # Local threshold
+        local_thresh = threshold_local(blurred, block_size=block_size, offset=offset)
+        binary_mask = blurred > local_thresh
 
-def extract_centroids_from_labels(labels):
-    """
-    Extract centroids from a labeled mask (skip label=0 background).
-    """
+    filled_mask = binary_fill_holes(binary_mask)
+    cleaned_mask = clear_border(filled_mask)
+    final_mask = remove_small_objects(cleaned_mask, min_size=min_size)
+    closed_mask = binary_closing(final_mask, disk(3))
+    labeled_mask = label(closed_mask)
+    return labeled_mask
+
+def extract_centroids(labels):
     props = regionprops(labels)
-    centroids = np.array([p.centroid for p in props if p.label != 0])
-    return centroids
+    return np.array([p.centroid for p in props if p.label != 0])
 
 def match_centroids(fixed_centroids, moving_centroids, distance_threshold=50):
-    """
-    Match centroids using nearest neighbors and
-    filter by a distance threshold.
-    """
     tree = cKDTree(moving_centroids)
     distances, indices = tree.query(fixed_centroids)
-    valid_matches = distances < distance_threshold
-    fixed_matched = fixed_centroids[valid_matches]
-    moving_matched = moving_centroids[indices[valid_matches]]
-    return fixed_matched, moving_matched
+    valid = distances < distance_threshold
+    return fixed_centroids[valid], moving_centroids[indices[valid]]
 
-def estimate_transform(fixed_centroids, moving_centroids):
-    """
-    Estimate an AffineTransform from matched centroids.
-    """
-    tform = AffineTransform()
-    tform.estimate(moving_centroids, fixed_centroids)
-    return tform
+def estimate_transform_ransac(fixed_points, moving_points,
+                              max_points=200,
+                              residual_threshold=5,
+                              max_trials=1000):
+    n = len(fixed_points)
+    if n > max_points:
+        idx = np.random.choice(n, max_points, replace=False)
+        fixed_sub = fixed_points[idx]
+        moving_sub = moving_points[idx]
+    else:
+        fixed_sub = fixed_points
+        moving_sub = moving_points
+
+    model_robust, inliers_mask = ransac(
+        (moving_sub, fixed_sub),  # (source, destination)
+        AffineTransform,
+        min_samples=3,
+        residual_threshold=residual_threshold,
+        max_trials=max_trials
+    )
+    return model_robust, inliers_mask
 
 def apply_transform(image, tform, output_shape):
-    """
-    Apply the given geometric transformation to an image,
-    filling outside areas with 0.
-    """
-    transformed_image = warp(
+    return warp(
         image,
         inverse_map=tform.inverse,
         output_shape=output_shape,
         mode='constant',
         cval=0
     )
-    return transformed_image
 
 def resize_image(image, target_shape):
-    """
-    Resize an image to the target shape.
-    """
-    from skimage.transform import resize
-    resized_image = resize(
+    return resize(
         image,
         target_shape,
         mode='reflect',
         anti_aliasing=True,
-        preserve_range=True
+        preserve_range=True,
+        order=3 #tweak order to a lower value if the process is too slow
     )
-    return resized_image
 
-def compute_cross_correlation(image1, image2):
-    """
-    Compute normalized cross-correlation between two images.
-    """
-    eps = 1e-10
-    mean1, std1 = image1.mean(), image1.std()
-    mean2, std2 = image2.mean(), image2.std()
-    norm1 = (image1 - mean1) / (std1 + eps)
-    norm2 = (image2 - mean2) / (std2 + eps)
-    correlation = np.sum(norm1 * norm2) / (
-        np.sqrt(np.sum(norm1**2)) * np.sqrt(np.sum(norm2**2)) + eps
-    )
-    return correlation
-
-def log_registration_details(fixed_path, moving_path, registered_image, fixed_image):
-    """
-    Currently uses compute_cross_correlation or a similar function.
-    We'll replace that with our thresholded correlation.
-    """
-    quality = compute_thresholded_correlation(fixed_image, registered_image)
-
-    print(f"Fixed Image Path: {fixed_path}")
-    print(f"Moving Image Path: {moving_path}")
-    print(f"Registration Quality (Thresholded Correlation): {quality:.4f}")
-
-    return quality
-
-
-def create_padding_mask(image, tform, output_shape):
-    """
-    Create a mask for areas of the registered image with no data.
-    """
-    ones_image = np.ones_like(image)
-    transformed_mask = warp(
-        ones_image,
-        inverse_map=tform.inverse,
-        output_shape=output_shape,
-        mode='constant',
-        cval=0
-    )
-    return transformed_mask > 0
-
-def log_padding_percentage(padding_mask):
-    total_pixels = padding_mask.size
-    padded_pixels = np.sum(~padding_mask)  # Invert mask for padded areas
-    percentage_padded = (padded_pixels / total_pixels) * 100
-    print(f"Percentage of padded area: {percentage_padded:.2f}%")
-
-def save_registered_image(output_dir, filename, image):
-    """
-    Save the registered image as a 16-bit TIFF.
-    """
+def save_registered_image(output_dir, filename, image, original_dtype):
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, filename)
-    tiff.imwrite(out_path, (image * 65535).astype(np.uint16))
+
+    if np.issubdtype(original_dtype, np.integer):
+        max_val = np.iinfo(original_dtype).max
+        min_val = 0
+        image_clipped = np.clip(image, min_val, max_val)
+        image_final = image_clipped.astype(original_dtype)
+    else:
+        image_final = image.astype(original_dtype)
+
+    tiff.imwrite(out_path, image_final)
     print(f"Saved registered image to: {out_path}")
 
-#####################
-# Main Registration
-#####################
-
-# Base directory containing ALL images in one folder
-base_dir = "/content/drive/My Drive/TIFF"  # <-- CHANGE ME
-output_dir = os.path.join(base_dir, "Registered_Images")
+##############################
+# Settings
+##############################
+base_dir = "/content/drive/My Drive/OPS_Nov2024/OriginalTIFF"
+output_dir = os.path.join(base_dir, "Registered_Images_RANSAC_Flexible") #idea was to store the registered images in to the same folder as a sub directory
 os.makedirs(output_dir, exist_ok=True)
 
-# Range of tiles and rounds
-tile_list = range(440)      # 0 to 439
-round_list = range(1, 9)    # 1 to 8
+tile_list = range(440)      # e.g. 0..439
+round_list = range(1, 9)    # e.g. 1..8
 
-log_data = []
+MAX_POINTS = 200
+RANSAC_RESIDUAL_THRESH = 5
+RANSAC_MAX_TRIALS = 1000
 
-# Choose the StarDist parameters you want to use for segmentation
-STARDIST_PROB_THRESH = 0.5
-STARDIST_NMS_THRESH  = 0.4
+##############################
+# Process One Tile
+##############################
+def process_one_tile(tile_num):
+    tile_str = f"{tile_num:03d}"
+    local_log = []
 
-for tile_num in tile_list:
-    tile_str = f"{tile_num:03d}"  # zero-pad tile number
-
-    # -----------------------------------------
-    # 1) Load FIXED DAPI (Phenotype) for a tile
-    # -----------------------------------------
+    # A) Load fixed image (Phenotype_DAPI was reference)
     fixed_filename = f"Phenotype_Tile-{tile_str}_c0_DAPI.tif"
     fixed_path = os.path.join(base_dir, fixed_filename)
     if not os.path.exists(fixed_path):
-        print(f"Fixed DAPI not found: {fixed_path}")
-        continue
+        print(f"[Tile {tile_str}] Missing Phenotype DAPI: {fixed_path}")
+        return local_log
 
-    fixed_image = io.imread(fixed_path).astype(np.float32)
-    # Normalize
-    denom = (fixed_image.max() - fixed_image.min()) + 1e-10
-    fixed_image = (fixed_image - fixed_image.min()) / denom
+    fixed_img = io.imread(fixed_path)
+    dtype_fixed = fixed_img.dtype
 
-    # -----------------------------------------
-    # 2) StarDist segmentation on FIXED DAPI
-    # -----------------------------------------
-    fixed_labels = stardist_segment(
-        fixed_image,
-        model,
-        prob_thresh=STARDIST_PROB_THRESH,
-        nms_thresh=STARDIST_NMS_THRESH
+    # Segment fixed image
+    fixed_norm = normalize_image(fixed_img)
+    fixed_labels = flexible_segmentation(
+        fixed_norm,
+        sigma=0.5,
+        min_size=100,
+        block_size=None,  # set to a value (i think interger) if you want local threshold..I dont think you will
+        offset=10
     )
-    fixed_centroids = extract_centroids_from_labels(fixed_labels)
-
+    fixed_centroids = extract_centroids(fixed_labels)
     if len(fixed_centroids) < 3:
-        print(f"Insufficient centroids in FIXED for tile {tile_str}")
-        continue
+        print(f"[Tile {tile_str}] Not enough nuclei in FIXED after segmentation.")
+        return local_log
 
+    # B) For each round
     for round_num in round_list:
         round_str = f"ISS-Round-{round_num}"
-
-        # -----------------------------------------
-        # 3) Load MOVING DAPI (ISS) for that round
-        # -----------------------------------------
         moving_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI.tif"
         moving_path = os.path.join(base_dir, moving_filename)
+
         if not os.path.exists(moving_path):
-            print(f"Moving DAPI not found: {moving_path}")
+            print(f"[Tile {tile_str}, Round {round_num}] Missing DAPI: {moving_path}")
             continue
 
-        moving_image = io.imread(moving_path).astype(np.float32)
-        denom_m = (moving_image.max() - moving_image.min()) + 1e-10
-        moving_image = (moving_image - moving_image.min()) / denom_m
+        moving_img = io.imread(moving_path)
+        dtype_moving = moving_img.dtype
 
-        # Resize if shapes differ
-        if fixed_image.shape != moving_image.shape:
-            print(f"Resizing {moving_filename} from {moving_image.shape} to {fixed_image.shape}")
-            moving_image = resize_image(moving_image, fixed_image.shape)
+        # Resize
+        if fixed_img.shape != moving_img.shape:
+            moving_img = resize_image(moving_img, fixed_img.shape)
 
-        # -----------------------------------------
-        # 4) StarDist segmentation on MOVING DAPI
-        # -----------------------------------------
-        moving_labels = stardist_segment(
-            moving_image,
-            model,
-            prob_thresh=STARDIST_PROB_THRESH,
-            nms_thresh=STARDIST_NMS_THRESH
+        # Segment moving image
+        moving_norm = normalize_image(moving_img)
+        moving_labels = flexible_segmentation(
+            moving_norm,
+            sigma=0.5,
+            min_size=100,
+            block_size=None,
+            offset=10
         )
-        moving_centroids = extract_centroids_from_labels(moving_labels)
-
+        moving_centroids = extract_centroids(moving_labels)
         if len(moving_centroids) < 3:
-            print(f"Insufficient centroids in MOVING for tile {tile_str}, round {round_num}")
+            print(f"[Tile {tile_str}, Round {round_num}] Not enough nuclei in MOVING after segmentation.")
             continue
 
-        # -----------------------------------------
-        # 5) Match centroids, estimate transform
-        # -----------------------------------------
-        fixed_matched, moving_matched = match_centroids(fixed_centroids, moving_centroids, distance_threshold=50)  ##You can play with this threshold
+        # Match centroids
+        fixed_matched, moving_matched = match_centroids(fixed_centroids, moving_centroids, distance_threshold=50)
         if len(fixed_matched) < 3:
-            print(f"Not enough matched points for tile {tile_str}, round {round_num}")
+            print(f"[Tile {tile_str}, Round {round_num}] Not enough matched points.")
             continue
 
-        tform = estimate_transform(fixed_matched, moving_matched)
-
-        # Apply transform to MOVING DAPI
-        registered_dapi = apply_transform(moving_image, tform, output_shape=fixed_image.shape)
-
-        # Log registration details
-        reg_quality = log_registration_details(
-            fixed_path, moving_path, registered_dapi, fixed_image
+        # RANSAC
+        model_robust, inliers_mask = estimate_transform_ransac(
+            fixed_matched,
+            moving_matched,
+            max_points=MAX_POINTS,
+            residual_threshold=RANSAC_RESIDUAL_THRESH,
+            max_trials=RANSAC_MAX_TRIALS
         )
+        inliers_count = np.sum(inliers_mask)
+        print(f"[Tile {tile_str}, Round {round_num}] RANSAC inliers: {inliers_count} / {len(inliers_mask)}")
 
-        # Optional: create padding mask and log
-        padding_mask = create_padding_mask(moving_image, tform, output_shape=fixed_image.shape)
-        log_padding_percentage(padding_mask)
+        # Warp DAPI
+        registered_dapi_float = apply_transform(moving_img, model_robust, fixed_img.shape)
+        reg_dapi_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI_registered.tif"
+        save_registered_image(output_dir, reg_dapi_filename, registered_dapi_float, dtype_moving)
 
-        # Save registered DAPI
-        registered_dapi_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI_registered.tif"
-        save_registered_image(output_dir, registered_dapi_filename, registered_dapi)
-
-        # Record logs
-        log_data.append({
+        # Log
+        local_log.append({
             "tile": tile_str,
             "round": round_num,
             "fixed_path": fixed_path,
             "moving_path": moving_path,
-            "registration_quality": reg_quality
+            "inliers_count": int(inliers_count)
         })
 
-        # -----------------------------------------
-        # 6) Apply transform to other channels (c1+)
-        # -----------------------------------------
+        # Warp additional channels
         channel_info = {
             1: "G-Filter",
             2: "T-Filter",
             3: "A-Filter",
             4: "C-Filter"
         }
-        for ch in channel_info:
-            ch_filter = channel_info[ch]
-            moving_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch}_{ch_filter}.tif"
-            moving_ch_path = os.path.join(base_dir, moving_ch_filename)
-
-            if not os.path.exists(moving_ch_path):
-                print(f"Missing channel {ch} for tile {tile_str}, round {round_num}: {moving_ch_path}")
+        for ch_idx, ch_name in channel_info.items():
+            ch_filename = f"{round_str}_Tile-{tile_str}_c{ch_idx}_{ch_name}.tif"
+            ch_path = os.path.join(base_dir, ch_filename)
+            if not os.path.exists(ch_path):
+                print(f"[Tile {tile_str}, Round {round_num}] Missing channel {ch_idx}: {ch_path}")
                 continue
 
-            # Load channel
-            moving_ch = io.imread(moving_ch_path).astype(np.float32)
-            denom_ch = (moving_ch.max() - moving_ch.min()) + 1e-10
-            moving_ch = (moving_ch - moving_ch.min()) / denom_ch
+            ch_img = io.imread(ch_path)
+            dtype_ch = ch_img.dtype
+            if ch_img.shape != fixed_img.shape:
+                ch_img = resize_image(ch_img, fixed_img.shape)
 
-            # Resize if necessary
-            if moving_ch.shape != fixed_image.shape:
-                moving_ch = resize_image(moving_ch, fixed_image.shape)
+            registered_ch_float = apply_transform(ch_img, model_robust, fixed_img.shape)
+            out_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch_idx}_{ch_name}_registered.tif"
+            save_registered_image(output_dir, out_ch_filename, registered_ch_float, dtype_ch)
 
-            # Apply transform
-            registered_ch = apply_transform(moving_ch, tform, output_shape=fixed_image.shape)
+    return local_log
 
-            # Save the result
-            out_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch}_{ch_filter}_registered.tif"
-            save_registered_image(output_dir, out_ch_filename, registered_ch)
+#################################################################################################################################################################
+# Run in Parallel with Progress Bar & Timing (The prgress bar only works if you set n_jobs to > 1) didnt have a time to chunk the tiles but it may adress the issue
+#################################################################################################################################################################
+n_jobs = 50  # Think about if you have enough computation resources before trying a number greater than one
 
-#######
-# Save 
-#######
-df_log = pd.DataFrame(log_data)
-log_csv = os.path.join(output_dir, "registration_quality_metrics.csv")
+# Trying the progress Bar
+
+start_time = time.time()
+print("Starting registration pipeline...")
+
+with tqdm_joblib(tqdm(desc="Tiles", total=len(tile_list))) as progress_bar:
+    all_logs = Parallel(n_jobs=n_jobs)(
+        delayed(process_one_tile)(tile_num) for tile_num in tile_list
+    )
+
+end_time = time.time()
+print(f"Registration completed in {end_time - start_time:.2f} seconds.")
+
+# Flatten logs
+all_logs_flat = [row for partial_log in all_logs for row in partial_log]
+
+# Save to CSV
+df_log = pd.DataFrame(all_logs_flat)
+log_csv = os.path.join(output_dir, "registration_ransac_flexible_log.csv")
 df_log.to_csv(log_csv, index=False)
-print(f"Registration log saved to: {log_csv}")
+print(f"Registration log saved: {log_csv}")
+
