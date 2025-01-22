@@ -1,0 +1,348 @@
+
+import os
+import numpy as np
+import pandas as pd
+import tifffile as tiff
+import matplotlib.pyplot as plt
+
+from skimage import io
+from skimage.measure import label, regionprops
+from skimage.transform import AffineTransform, warp, resize
+from scipy.spatial import cKDTree
+from skimage.filters import threshold_otsu
+
+
+####################################
+# StarDist imports
+####################################
+from stardist.models import StarDist2D
+from csbdeep.utils import normalize
+
+####################################
+# 1) Load the StarDist model (once)
+####################################
+# For example, the pretrained '2D_versatile_fluo' model:
+model = StarDist2D.from_pretrained('2D_versatile_fluo')
+
+##################
+# Helper Functions
+##################
+def compute_thresholded_correlation(image1, image2):
+    """
+    Compute the Pearson correlation coefficient of two images
+    after thresholding them (e.g., via Otsu).
+    """
+    # If your images are float and not too large, we can directly do Otsu.
+    # Otherwise, you can pass custom thresholds as parameters.
+    thresh1 = threshold_otsu(image1)
+    thresh2 = threshold_otsu(image2)
+
+    # Convert to binary
+    bin1 = image1 > thresh1
+    bin2 = image2 > thresh2
+
+    # Flatten
+    flat1 = bin1.ravel()
+    flat2 = bin2.ravel()
+
+    # Compute correlation matrix (2x2) with np.corrcoef
+    cm = np.corrcoef(flat1, flat2)
+
+    # The off-diagonal elements [0,1] or [1,0] is the correlation coefficient
+    r = cm[0, 1]
+    return r
+
+
+def stardist_segment(image, model, prob_thresh=0.5, nms_thresh=0.4):
+    """
+    Use StarDist to segment nuclei in a given DAPI image.
+    Return a labeled mask (StarDist instance segmentation).
+    """
+    # Typically, we normalize to a standard range for StarDist
+    # Adjust percentiles to your data if needed:
+    image_norm = normalize(image, 1, 99.8, axis=(0,1))
+
+    # Predict StarDist instances
+    labels, details = model.predict_instances(
+        image_norm,
+        prob_thresh=prob_thresh,
+        nms_thresh=nms_thresh
+    )
+    return labels
+
+def extract_centroids_from_labels(labels):
+    """
+    Extract centroids from a labeled mask (skip label=0 background).
+    """
+    props = regionprops(labels)
+    centroids = np.array([p.centroid for p in props if p.label != 0])
+    return centroids
+
+def match_centroids(fixed_centroids, moving_centroids, distance_threshold=50):
+    """
+    Match centroids using nearest neighbors and
+    filter by a distance threshold.
+    """
+    tree = cKDTree(moving_centroids)
+    distances, indices = tree.query(fixed_centroids)
+    valid_matches = distances < distance_threshold
+    fixed_matched = fixed_centroids[valid_matches]
+    moving_matched = moving_centroids[indices[valid_matches]]
+    return fixed_matched, moving_matched
+
+def estimate_transform(fixed_centroids, moving_centroids):
+    """
+    Estimate an AffineTransform from matched centroids.
+    """
+    tform = AffineTransform()
+    tform.estimate(moving_centroids, fixed_centroids)
+    return tform
+
+def apply_transform(image, tform, output_shape):
+    """
+    Apply the given geometric transformation to an image,
+    filling outside areas with 0.
+    """
+    transformed_image = warp(
+        image,
+        inverse_map=tform.inverse,
+        output_shape=output_shape,
+        mode='constant',
+        cval=0
+    )
+    return transformed_image
+
+def resize_image(image, target_shape):
+    """
+    Resize an image to the target shape.
+    """
+    from skimage.transform import resize
+    resized_image = resize(
+        image,
+        target_shape,
+        mode='reflect',
+        anti_aliasing=True,
+        preserve_range=True
+    )
+    return resized_image
+
+def compute_cross_correlation(image1, image2):
+    """
+    Compute normalized cross-correlation between two images.
+    """
+    eps = 1e-10
+    mean1, std1 = image1.mean(), image1.std()
+    mean2, std2 = image2.mean(), image2.std()
+    norm1 = (image1 - mean1) / (std1 + eps)
+    norm2 = (image2 - mean2) / (std2 + eps)
+    correlation = np.sum(norm1 * norm2) / (
+        np.sqrt(np.sum(norm1**2)) * np.sqrt(np.sum(norm2**2)) + eps
+    )
+    return correlation
+
+def log_registration_details(fixed_path, moving_path, registered_image, fixed_image):
+    """
+    Currently uses compute_cross_correlation or a similar function.
+    We'll replace that with our thresholded correlation.
+    """
+    quality = compute_thresholded_correlation(fixed_image, registered_image)
+
+    print(f"Fixed Image Path: {fixed_path}")
+    print(f"Moving Image Path: {moving_path}")
+    print(f"Registration Quality (Thresholded Correlation): {quality:.4f}")
+
+    return quality
+
+
+def create_padding_mask(image, tform, output_shape):
+    """
+    Create a mask for areas of the registered image with no data.
+    """
+    ones_image = np.ones_like(image)
+    transformed_mask = warp(
+        ones_image,
+        inverse_map=tform.inverse,
+        output_shape=output_shape,
+        mode='constant',
+        cval=0
+    )
+    return transformed_mask > 0
+
+def log_padding_percentage(padding_mask):
+    total_pixels = padding_mask.size
+    padded_pixels = np.sum(~padding_mask)  # Invert mask for padded areas
+    percentage_padded = (padded_pixels / total_pixels) * 100
+    print(f"Percentage of padded area: {percentage_padded:.2f}%")
+
+def save_registered_image(output_dir, filename, image):
+    """
+    Save the registered image as a 16-bit TIFF.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, filename)
+    tiff.imwrite(out_path, (image * 65535).astype(np.uint16))
+    print(f"Saved registered image to: {out_path}")
+
+#####################
+# Main Registration
+#####################
+
+# Base directory containing ALL images in one folder
+base_dir = "/content/drive/My Drive/TIFF"  # <-- CHANGE ME
+output_dir = os.path.join(base_dir, "Registered_Images")
+os.makedirs(output_dir, exist_ok=True)
+
+# Range of tiles and rounds
+tile_list = range(440)      # 0 to 439
+round_list = range(1, 9)    # 1 to 8
+
+log_data = []
+
+# Choose the StarDist parameters you want to use for segmentation
+STARDIST_PROB_THRESH = 0.5
+STARDIST_NMS_THRESH  = 0.4
+
+for tile_num in tile_list:
+    tile_str = f"{tile_num:03d}"  # zero-pad tile number
+
+    # -----------------------------------------
+    # 1) Load FIXED DAPI (Phenotype) for a tile
+    # -----------------------------------------
+    fixed_filename = f"Phenotype_Tile-{tile_str}_c0_DAPI.tif"
+    fixed_path = os.path.join(base_dir, fixed_filename)
+    if not os.path.exists(fixed_path):
+        print(f"Fixed DAPI not found: {fixed_path}")
+        continue
+
+    fixed_image = io.imread(fixed_path).astype(np.float32)
+    # Normalize
+    denom = (fixed_image.max() - fixed_image.min()) + 1e-10
+    fixed_image = (fixed_image - fixed_image.min()) / denom
+
+    # -----------------------------------------
+    # 2) StarDist segmentation on FIXED DAPI
+    # -----------------------------------------
+    fixed_labels = stardist_segment(
+        fixed_image,
+        model,
+        prob_thresh=STARDIST_PROB_THRESH,
+        nms_thresh=STARDIST_NMS_THRESH
+    )
+    fixed_centroids = extract_centroids_from_labels(fixed_labels)
+
+    if len(fixed_centroids) < 3:
+        print(f"Insufficient centroids in FIXED for tile {tile_str}")
+        continue
+
+    for round_num in round_list:
+        round_str = f"ISS-Round-{round_num}"
+
+        # -----------------------------------------
+        # 3) Load MOVING DAPI (ISS) for that round
+        # -----------------------------------------
+        moving_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI.tif"
+        moving_path = os.path.join(base_dir, moving_filename)
+        if not os.path.exists(moving_path):
+            print(f"Moving DAPI not found: {moving_path}")
+            continue
+
+        moving_image = io.imread(moving_path).astype(np.float32)
+        denom_m = (moving_image.max() - moving_image.min()) + 1e-10
+        moving_image = (moving_image - moving_image.min()) / denom_m
+
+        # Resize if shapes differ
+        if fixed_image.shape != moving_image.shape:
+            print(f"Resizing {moving_filename} from {moving_image.shape} to {fixed_image.shape}")
+            moving_image = resize_image(moving_image, fixed_image.shape)
+
+        # -----------------------------------------
+        # 4) StarDist segmentation on MOVING DAPI
+        # -----------------------------------------
+        moving_labels = stardist_segment(
+            moving_image,
+            model,
+            prob_thresh=STARDIST_PROB_THRESH,
+            nms_thresh=STARDIST_NMS_THRESH
+        )
+        moving_centroids = extract_centroids_from_labels(moving_labels)
+
+        if len(moving_centroids) < 3:
+            print(f"Insufficient centroids in MOVING for tile {tile_str}, round {round_num}")
+            continue
+
+        # -----------------------------------------
+        # 5) Match centroids, estimate transform
+        # -----------------------------------------
+        fixed_matched, moving_matched = match_centroids(fixed_centroids, moving_centroids, distance_threshold=50)
+        if len(fixed_matched) < 3:
+            print(f"Not enough matched points for tile {tile_str}, round {round_num}")
+            continue
+
+        tform = estimate_transform(fixed_matched, moving_matched)
+
+        # Apply transform to MOVING DAPI
+        registered_dapi = apply_transform(moving_image, tform, output_shape=fixed_image.shape)
+
+        # Log registration details
+        reg_quality = log_registration_details(
+            fixed_path, moving_path, registered_dapi, fixed_image
+        )
+
+        # Optional: create padding mask and log
+        padding_mask = create_padding_mask(moving_image, tform, output_shape=fixed_image.shape)
+        log_padding_percentage(padding_mask)
+
+        # Save registered DAPI
+        registered_dapi_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI_registered.tif"
+        save_registered_image(output_dir, registered_dapi_filename, registered_dapi)
+
+        # Record logs
+        log_data.append({
+            "tile": tile_str,
+            "round": round_num,
+            "fixed_path": fixed_path,
+            "moving_path": moving_path,
+            "registration_quality": reg_quality
+        })
+
+        # -----------------------------------------
+        # 6) Apply transform to other channels (c1+)
+        # -----------------------------------------
+        channel_info = {
+            1: "G-Filter",
+            2: "T-Filter",
+            3: "A-Filter",
+            4: "C-Filter"
+        }
+        for ch in channel_info:
+            ch_filter = channel_info[ch]
+            moving_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch}_{ch_filter}.tif"
+            moving_ch_path = os.path.join(base_dir, moving_ch_filename)
+
+            if not os.path.exists(moving_ch_path):
+                print(f"Missing channel {ch} for tile {tile_str}, round {round_num}: {moving_ch_path}")
+                continue
+
+            # Load channel
+            moving_ch = io.imread(moving_ch_path).astype(np.float32)
+            denom_ch = (moving_ch.max() - moving_ch.min()) + 1e-10
+            moving_ch = (moving_ch - moving_ch.min()) / denom_ch
+
+            # Resize if necessary
+            if moving_ch.shape != fixed_image.shape:
+                moving_ch = resize_image(moving_ch, fixed_image.shape)
+
+            # Apply transform
+            registered_ch = apply_transform(moving_ch, tform, output_shape=fixed_image.shape)
+
+            # Save the result
+            out_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch}_{ch_filter}_registered.tif"
+            save_registered_image(output_dir, out_ch_filename, registered_ch)
+
+#######################################
+# Save log to CSV
+#######################################
+df_log = pd.DataFrame(log_data)
+log_csv = os.path.join(output_dir, "registration_quality_metrics.csv")
+df_log.to_csv(log_csv, index=False)
+print(f"Registration log saved to: {log_csv}")
