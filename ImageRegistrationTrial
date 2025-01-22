@@ -89,14 +89,18 @@ def estimate_transform_ransac(fixed_points, moving_points,
     )
     return model_robust, inliers_mask
 
-def apply_transform(image, tform, output_shape):
-    return warp(
+def apply_transform_with_padding(image, tform, output_shape, padding_value=0):
+    """
+    Apply the transformation with padding, ensuring shifted and edged areas are filled with padding.
+    """
+    transformed_image = warp(
         image,
         inverse_map=tform.inverse,
         output_shape=output_shape,
         mode='constant',
-        cval=0
+        cval=padding_value
     )
+    return transformed_image
 
 def resize_image(image, target_shape):
     return resize(
@@ -108,7 +112,7 @@ def resize_image(image, target_shape):
         order=3 #tweak order to a lower value if the process is too slow
     )
 
-def save_registered_image(output_dir, filename, image, original_dtype):
+def save_registered_image_with_padding(output_dir, filename, image, original_dtype, padding_value=0):
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, filename)
 
@@ -121,13 +125,15 @@ def save_registered_image(output_dir, filename, image, original_dtype):
         image_final = image.astype(original_dtype)
 
     tiff.imwrite(out_path, image_final)
-    print(f"Saved registered image to: {out_path}")
+    print(f"Saved registered image with padding to: {out_path}")
+
+
 
 ##############################
 # Settings
 ##############################
 base_dir = "/content/drive/My Drive/OPS_Nov2024/OriginalTIFF"
-output_dir = os.path.join(base_dir, "Registered_Images_RANSAC_Flexible") #idea was to store the registered images in to the same folder as a sub directory
+output_dir = os.path.join(base_dir, "Registered_Images_RANSAC_Flexible2") #idea was to store the registered images in to the same folder as a sub directory
 os.makedirs(output_dir, exist_ok=True)
 
 tile_list = range(440)      # e.g. 0..439
@@ -144,7 +150,7 @@ def process_one_tile(tile_num):
     tile_str = f"{tile_num:03d}"
     local_log = []
 
-    # A) Load fixed image (Phenotype_DAPI was reference)
+    # Load fixed image (Phenotype_DAPI was reference)
     fixed_filename = f"Phenotype_Tile-{tile_str}_c0_DAPI.tif"
     fixed_path = os.path.join(base_dir, fixed_filename)
     if not os.path.exists(fixed_path):
@@ -160,7 +166,7 @@ def process_one_tile(tile_num):
         fixed_norm,
         sigma=0.5,
         min_size=100,
-        block_size=None,  # set to a value (i think interger) if you want local threshold..I dont think you will
+        block_size=None,  # set to a value if you want local thresholding
         offset=10
     )
     fixed_centroids = extract_centroids(fixed_labels)
@@ -168,7 +174,7 @@ def process_one_tile(tile_num):
         print(f"[Tile {tile_str}] Not enough nuclei in FIXED after segmentation.")
         return local_log
 
-    # B) For each round
+    # For each round
     for round_num in round_list:
         round_str = f"ISS-Round-{round_num}"
         moving_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI.tif"
@@ -216,12 +222,16 @@ def process_one_tile(tile_num):
         inliers_count = np.sum(inliers_mask)
         print(f"[Tile {tile_str}, Round {round_num}] RANSAC inliers: {inliers_count} / {len(inliers_mask)}")
 
-        # Warp DAPI
-        registered_dapi_float = apply_transform(moving_img, model_robust, fixed_img.shape)
-        reg_dapi_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI_registered.tif"
-        save_registered_image(output_dir, reg_dapi_filename, registered_dapi_float, dtype_moving)
+        # Warp DAPI with padding
+        registered_dapi_float = apply_transform_with_padding(moving_img, model_robust, fixed_img.shape)
+        reg_dapi_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI_registered_with_padding.tif"
+        save_registered_image_with_padding(output_dir, reg_dapi_filename, registered_dapi_float, dtype_moving)
 
-        # Log
+        # Log padding percentage
+        padding_mask = create_padding_mask(moving_img, model_robust, fixed_img.shape)
+        log_padding_percentage(padding_mask)
+
+        # Log the registration
         local_log.append({
             "tile": tile_str,
             "round": round_num,
@@ -230,7 +240,7 @@ def process_one_tile(tile_num):
             "inliers_count": int(inliers_count)
         })
 
-        # Warp additional channels
+        # Warp additional channels with padding (if any)
         channel_info = {
             1: "G-Filter",
             2: "T-Filter",
@@ -249,16 +259,16 @@ def process_one_tile(tile_num):
             if ch_img.shape != fixed_img.shape:
                 ch_img = resize_image(ch_img, fixed_img.shape)
 
-            registered_ch_float = apply_transform(ch_img, model_robust, fixed_img.shape)
-            out_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch_idx}_{ch_name}_registered.tif"
-            save_registered_image(output_dir, out_ch_filename, registered_ch_float, dtype_ch)
+            registered_ch_float = apply_transform_with_padding(ch_img, model_robust, fixed_img.shape)
+            out_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch_idx}_{ch_name}_registered_with_padding.tif"
+            save_registered_image_with_padding(output_dir, out_ch_filename, registered_ch_float, dtype_ch)
 
     return local_log
 
 #################################################################################################################################################################
 # Run in Parallel with Progress Bar & Timing (The prgress bar only works if you set n_jobs to > 1) didnt have a time to chunk the tiles but it may adress the issue
 #################################################################################################################################################################
-n_jobs = 50  # Think about if you have enough computation resources before trying a number greater than one
+n_jobs = 1  # Think about if you have enough computation resources before trying a number greater than one
 
 # Trying the progress Bar
 
@@ -281,4 +291,3 @@ df_log = pd.DataFrame(all_logs_flat)
 log_csv = os.path.join(output_dir, "registration_ransac_flexible_log.csv")
 df_log.to_csv(log_csv, index=False)
 print(f"Registration log saved: {log_csv}")
-
