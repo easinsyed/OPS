@@ -89,16 +89,40 @@ def estimate_transform_ransac(fixed_points, moving_points,
     )
     return model_robust, inliers_mask
 
+def create_padding_mask(image, tform, output_shape):
+    """
+    Create a padding mask that marks the padded regions after applying the transform.
+    """
+    ones_image = np.ones_like(image, dtype=np.float32)
+    transformed_mask = warp(
+        ones_image,
+        inverse_map=tform.inverse,
+        output_shape=output_shape,
+        mode='constant',
+        cval=0
+    )
+    return transformed_mask > 0
+
+def log_padding_percentage(padding_mask):
+    """
+    Log the percentage of padded area in the transformed image.
+    """
+    total_pixels = padding_mask.size
+    padded_pixels = np.sum(~padding_mask)  # Non-zero region corresponds to padded area
+    percentage_padded = (padded_pixels / total_pixels) * 100
+    print(f"Percentage of padded area: {percentage_padded:.2f}%")
+
 def apply_transform_with_padding(image, tform, output_shape, padding_value=0):
     """
-    Apply the transformation with padding, ensuring shifted and edged areas are filled with padding.
+    Apply the transformation with padding to ensure the shifted areas are filled.
+    Padding will be applied to the regions outside the original image bounds after transformation.
     """
     transformed_image = warp(
         image,
         inverse_map=tform.inverse,
         output_shape=output_shape,
         mode='constant',
-        cval=padding_value
+        cval=padding_value  # Padding value is used here
     )
     return transformed_image
 
@@ -113,9 +137,14 @@ def resize_image(image, target_shape):
     )
 
 def save_registered_image_with_padding(output_dir, filename, image, original_dtype, padding_value=0):
+    """
+    Save the transformed image ensuring the padding is applied.
+    This function saves the image with padding, while preserving its original properties except for the size.
+    """
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, filename)
 
+    # Ensure that the image is correctly saved with its original dtype
     if np.issubdtype(original_dtype, np.integer):
         max_val = np.iinfo(original_dtype).max
         min_val = 0
@@ -124,8 +153,9 @@ def save_registered_image_with_padding(output_dir, filename, image, original_dty
     else:
         image_final = image.astype(original_dtype)
 
-    tiff.imwrite(out_path, image_final)
-    print(f"Saved registered image with padding to: {out_path}")
+    # Ensure that padding is visible in the final image
+    print(f"Saving registered image with padding to: {out_path}")
+    tiff.imwrite(out_path, image_final)  # Save image with padding
 
 
 
@@ -187,7 +217,7 @@ def process_one_tile(tile_num):
         moving_img = io.imread(moving_path)
         dtype_moving = moving_img.dtype
 
-        # Resize
+        # Resize if necessary
         if fixed_img.shape != moving_img.shape:
             moving_img = resize_image(moving_img, fixed_img.shape)
 
@@ -211,7 +241,7 @@ def process_one_tile(tile_num):
             print(f"[Tile {tile_str}, Round {round_num}] Not enough matched points.")
             continue
 
-        # RANSAC
+        # RANSAC transformation estimation
         model_robust, inliers_mask = estimate_transform_ransac(
             fixed_matched,
             moving_matched,
@@ -222,16 +252,16 @@ def process_one_tile(tile_num):
         inliers_count = np.sum(inliers_mask)
         print(f"[Tile {tile_str}, Round {round_num}] RANSAC inliers: {inliers_count} / {len(inliers_mask)}")
 
-        # Warp DAPI with padding
-        registered_dapi_float = apply_transform_with_padding(moving_img, model_robust, fixed_img.shape)
+        # Apply transform with padding to the DAPI image
+        registered_dapi_float = apply_transform_with_padding(moving_img, model_robust, fixed_img.shape, padding_value=0)
         reg_dapi_filename = f"{round_str}_Tile-{tile_str}_c0_DAPI_registered_with_padding.tif"
-        save_registered_image_with_padding(output_dir, reg_dapi_filename, registered_dapi_float, dtype_moving)
+        save_registered_image_with_padding(output_dir, reg_dapi_filename, registered_dapi_float, dtype_moving, padding_value=0)
 
         # Log padding percentage
         padding_mask = create_padding_mask(moving_img, model_robust, fixed_img.shape)
         log_padding_percentage(padding_mask)
 
-        # Log the registration
+        # Log registration details
         local_log.append({
             "tile": tile_str,
             "round": round_num,
@@ -240,7 +270,7 @@ def process_one_tile(tile_num):
             "inliers_count": int(inliers_count)
         })
 
-        # Warp additional channels with padding (if any)
+        # Warp and save other channels with padding
         channel_info = {
             1: "G-Filter",
             2: "T-Filter",
@@ -259,9 +289,9 @@ def process_one_tile(tile_num):
             if ch_img.shape != fixed_img.shape:
                 ch_img = resize_image(ch_img, fixed_img.shape)
 
-            registered_ch_float = apply_transform_with_padding(ch_img, model_robust, fixed_img.shape)
+            registered_ch_float = apply_transform_with_padding(ch_img, model_robust, fixed_img.shape, padding_value=0)
             out_ch_filename = f"{round_str}_Tile-{tile_str}_c{ch_idx}_{ch_name}_registered_with_padding.tif"
-            save_registered_image_with_padding(output_dir, out_ch_filename, registered_ch_float, dtype_ch)
+            save_registered_image_with_padding(output_dir, out_ch_filename, registered_ch_float, dtype_ch, padding_value=0)
 
     return local_log
 
