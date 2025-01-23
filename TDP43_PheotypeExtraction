@@ -96,8 +96,8 @@ def process_tile(tile_index):
                 return None, None
         
         # Read images
-        cell_mask   = io.imread(cell_mask_path).astype(np.uint8)
-        nuclei_mask = io.imread(nuclei_mask_path).astype(np.uint8)
+        cell_mask   = io.imread(cell_mask_path).astype(bool)
+        nuclei_mask = io.imread(nuclei_mask_path).astype(bool)
 
         
         dapi_img    = io.imread(dapi_image_path)
@@ -211,7 +211,7 @@ def process_tile(tile_index):
                 nuc_aspect = np.nan
                 shape_cat_nuc = "NoNucleus"
 
-            cytoplasm_mask_this = cell_mask_this & (~nucleus_mask_this)
+            cytoplasm_mask_this = np.logical_xor(cell_mask_this, nucleus_mask_this)
             cytoplasm_mask_this[cytoplasm_mask_this < 0] = 0
 
             # --------------- TDP-43 Intensities ---------------
