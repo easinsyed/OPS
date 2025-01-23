@@ -1,0 +1,490 @@
+import os
+import re
+import glob
+import numpy as np
+import pandas as pd
+from skimage import io, measure, morphology, filters
+from skimage.color import rgb2gray
+from skimage.transform import resize
+from tqdm import tqdm
+from collections import defaultdict
+
+# -----------------------------------------------------------------------------
+# 1. Folder Paths
+# -----------------------------------------------------------------------------
+
+cell_mask_folder = r"D:/OPS_Nov_2024/TIFF/gamma_adjusted_images/cells/Matlab_ProcessedMasks"
+nuclei_mask_folder = r"D:/OPS_Nov_2024/TIFF/gamma_adjusted_images/nuclei/Matlab_ProcessedMasks"
+raw_image_folder   = r"D:/OPS_Nov_2024/TIFF"
+
+output_csv_path = r"D:/OPS_Nov_2024/TIFF/tdp43_measurements_all_tiles.csv"
+
+
+# -----------------------------------------------------------------------------
+# 2. Find Valid Tile Indices
+# -----------------------------------------------------------------------------
+def find_valid_tile_indices():
+    """
+    Scan the cell_mask_folder for Phenotype_CellMask_Tile-XXX_c1_AF488.tif files,
+    parse out the tile index, and verify:
+      (1) Phenotype_NucleiMask_Tile-XXX_c0_DAPI in nuclei_mask_folder
+      (2) Phenotype_Tile-XXX_c0_DAPI (raw DAPI) in raw_image_folder
+      (3) Phenotype_Tile-XXX_c1_AF488 (raw TDP-43) in raw_image_folder
+    Returns a sorted list of valid tile indices.
+    """
+    pattern_cell = os.path.join(cell_mask_folder, "Phenotype_CellMask_Tile-*_c1_AF488.png*")
+    print(pattern_cell)
+    cell_files = sorted(glob.glob(pattern_cell))
+    print(cell_files)
+
+    valid_tiles = []
+    for cell_path in cell_files:
+        base_name = os.path.basename(cell_path)
+        # Example base_name: Phenotype_CellMask_Tile-023_c1_AF488.png
+        match = re.search(r"Phenotype_CellMask_Tile-(\d+)_c1_AF488", base_name)
+        if not match:
+            continue
+        
+        tile_str = match.group(1)   # e.g. "023"
+        tile_idx = int(tile_str)    # e.g. 23
+
+        # Construct the other expected filenames
+        nuclei_mask_path = os.path.join(nuclei_mask_folder, f"Phenotype_NucleiMask_Tile-{tile_str}_c0_DAPI.png")
+        dapi_raw_path    = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c0_DAPI.tif")
+        tdp43_raw_path   = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c1_AF488.tif")
+
+        # Check if they exist
+        if (os.path.isfile(cell_path) and
+            os.path.isfile(nuclei_mask_path) and
+            os.path.isfile(dapi_raw_path)    and
+            os.path.isfile(tdp43_raw_path)):
+            valid_tiles.append(tile_idx)
+    
+    return sorted(valid_tiles)
+
+
+# -----------------------------------------------------------------------------
+# 3. Process One Tile
+# -----------------------------------------------------------------------------
+def process_tile(tile_index):
+    """
+    Reads:
+      - Cell mask:   Phenotype_CellMask_Tile-XXX_c1_AF488.tif
+      - Nuclei mask: Phenotype_NucleiMask_Tile-XXX_c0_DAPI.tif
+      - DAPI image (raw c0)
+      - TDP-43 image (raw c1)
+    Measures:
+      - TDP-43 intensities in cell, cytoplasm, nucleus
+      - DAPI intensities in nucleus
+      - Additional morphological features & classifications
+      - Texture/Granularity (std dev in TDP-43 signal)
+      - Mislocalization index (cytoplasmic fraction of TDP-43)
+    Returns: (df_cells, df_agg) or (None, None) if an error occurs.
+    """
+    try:
+        tile_str = f"{tile_index:03d}"  # zero-pad
+        # Construct paths
+        cell_mask_path   = os.path.join(cell_mask_folder,   f"Phenotype_CellMask_Tile-{tile_str}_c1_AF488.png")
+        nuclei_mask_path = os.path.join(nuclei_mask_folder, f"Phenotype_NucleiMask_Tile-{tile_str}_c0_DAPI.png")
+        dapi_image_path  = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c0_DAPI.tif")
+        tdp43_image_path = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c1_AF488.tif")
+
+        # Double-check existence
+        for p in [cell_mask_path, nuclei_mask_path, dapi_image_path, tdp43_image_path]:
+            if not os.path.isfile(p):
+                print(f"[Tile {tile_str}] Missing {p}")
+                return None, None
+        
+        # Read images
+        cell_mask   = io.imread(cell_mask_path).astype(np.uint8)
+        nuclei_mask = io.imread(nuclei_mask_path).astype(np.uint8)
+
+        
+        dapi_img    = io.imread(dapi_image_path)
+        tdp43_img   = io.imread(tdp43_image_path)
+        
+        # Label masks
+        labeled_cells  = measure.label(cell_mask, connectivity=1)
+        labeled_nuclei = measure.label(nuclei_mask, connectivity=1)
+        
+        cell_props = measure.regionprops(labeled_cells)
+        nuc_props  = measure.regionprops(labeled_nuclei)
+        
+        # ---------------------------------------------------------------------
+        # Map Nuclei -> Cell
+        # ---------------------------------------------------------------------
+        nucleus_to_cell_map = {}
+        for nuc in nuc_props:
+            nuc_label = nuc.label
+            coords = nuc.coords
+            # Which cell labels are in these coords?
+            cell_labels_in_nucleus = labeled_cells[coords[:, 0], coords[:, 1]]
+            cell_labels_in_nucleus = cell_labels_in_nucleus[cell_labels_in_nucleus != 0]
+            if len(cell_labels_in_nucleus) == 0:
+                nucleus_to_cell_map[nuc_label] = 0
+            else:
+                unique_labels, counts = np.unique(cell_labels_in_nucleus, return_counts=True)
+                nucleus_to_cell_map[nuc_label] = unique_labels[np.argmax(counts)]
+        
+        # Reverse map: Cell -> list of nuclei
+        from collections import defaultdict
+        cell_to_nuclei_map = defaultdict(list)
+        for nuc_label, c_label in nucleus_to_cell_map.items():
+            cell_to_nuclei_map[c_label].append(nuc_label)
+        
+        # ---------------------------------------------------------------------
+        # Measure TDP-43 + DAPI + morphological features in each cell
+        # ---------------------------------------------------------------------
+        cell_measurements = []
+        for cell_obj in cell_props:
+            cell_label = cell_obj.label
+
+            # Basic shape features
+            cy, cx = cell_obj.centroid
+            bbox_min_y, bbox_min_x, bbox_max_y, bbox_max_x = cell_obj.bbox
+
+            # Major/Minor Axes, Orientation, etc.
+            major_axis_cell = cell_obj.major_axis_length
+            minor_axis_cell = cell_obj.minor_axis_length
+            orientation_cell = cell_obj.orientation  # in radians
+
+            if minor_axis_cell > 0:
+                aspect_ratio_cell = major_axis_cell / minor_axis_cell
+            else:
+                aspect_ratio_cell = np.nan
+
+            # Simple shape classification based on aspect ratio
+            # Adjust thresholds to your data/discretion
+            if aspect_ratio_cell < 1.2:
+                shape_cat_cell = "Round"
+            elif aspect_ratio_cell < 1.5:
+                shape_cat_cell = "Moderately Elongated"
+            else:
+                shape_cat_cell = "Highly Elongated"
+
+            # Build a mask for this cell
+            cell_mask_this = (labeled_cells == cell_label)
+            
+            # Combine all nuclei belonging to this cell
+            nuclei_for_this_cell = cell_to_nuclei_map.get(cell_label, [])
+            # We'll only measure nucleus shape if exactly 1 nucleus
+            if len(nuclei_for_this_cell) == 1:
+                nucleus_mask_this = (labeled_nuclei == nuclei_for_this_cell[0])
+                # Additional nucleus shape metrics
+                nuc_obj = measure.regionprops(nucleus_mask_this.astype(int))
+                if len(nuc_obj) == 1:
+                    major_axis_nuc = nuc_obj[0].major_axis_length
+                    minor_axis_nuc = nuc_obj[0].minor_axis_length
+                    orientation_nuc = nuc_obj[0].orientation
+                    if minor_axis_nuc > 0:
+                        nuc_aspect = major_axis_nuc / minor_axis_nuc
+                    else:
+                        nuc_aspect = np.nan
+
+                    if nuc_aspect < 1.2:
+                        shape_cat_nuc = "Round"
+                    elif nuc_aspect < 1.5:
+                        shape_cat_nuc = "Moderately Elongated"
+                    else:
+                        shape_cat_nuc = "Highly Elongated"
+                else:
+                    # Something odd, skip nucleus shape classification
+                    major_axis_nuc = np.nan
+                    minor_axis_nuc = np.nan
+                    orientation_nuc = np.nan
+                    nuc_aspect = np.nan
+                    shape_cat_nuc = "Multiple/Unknown"
+            elif len(nuclei_for_this_cell) > 1:
+                # More than one nucleus => skip or average
+                nucleus_mask_this = np.isin(labeled_nuclei, nuclei_for_this_cell)
+                major_axis_nuc = np.nan
+                minor_axis_nuc = np.nan
+                orientation_nuc = np.nan
+                nuc_aspect = np.nan
+                shape_cat_nuc = "MultipleNuclei"
+            else:
+                # No nucleus
+                nucleus_mask_this = np.zeros_like(nuclei_mask, dtype=bool)
+                major_axis_nuc = np.nan
+                minor_axis_nuc = np.nan
+                orientation_nuc = np.nan
+                nuc_aspect = np.nan
+                shape_cat_nuc = "NoNucleus"
+
+            cytoplasm_mask_this = cell_mask_this & (~nucleus_mask_this)
+            cytoplasm_mask_this[cytoplasm_mask_this < 0] = 0
+
+            # --------------- TDP-43 Intensities ---------------
+            cell_int_tdp43      = np.sum(tdp43_img[cell_mask_this])
+            nuclear_int_tdp43   = np.sum(tdp43_img[nucleus_mask_this])
+            cytoplasm_int_tdp43 = np.sum(tdp43_img[cytoplasm_mask_this])
+            
+            # Areas
+            cell_area      = np.sum(cell_mask_this)
+            nuclear_area   = np.sum(nucleus_mask_this)
+            cytoplasm_area = np.sum(cytoplasm_mask_this)
+            
+            # Means
+            cell_mean_tdp43      = (cell_int_tdp43 / cell_area) if cell_area > 0 else 0
+            nuclear_mean_tdp43   = (nuclear_int_tdp43 / nuclear_area) if nuclear_area > 0 else 0
+            cytoplasm_mean_tdp43 = (cytoplasm_int_tdp43 / cytoplasm_area) if cytoplasm_area > 0 else 0
+            
+            # N:C ratio (TDP-43)
+            if cytoplasm_mean_tdp43 == 0:
+                nuc_cyt_ratio_tdp43 = np.nan
+            else:
+                nuc_cyt_ratio_tdp43 = nuclear_mean_tdp43 / cytoplasm_mean_tdp43
+            
+            # %Nuclear TDP-43
+            if cell_int_tdp43 == 0:
+                frac_nuc_tdp43 = np.nan
+            else:
+                frac_nuc_tdp43 = (nuclear_int_tdp43 / cell_int_tdp43)*100
+
+            # ---------------- Mislocalization Index (cytoplasmic fraction) ----------------
+            # E.g. fraction of TDP-43 in cytoplasm: cytoplasm_int / total_int
+            if cell_int_tdp43 > 0:
+                mislocalization_index = cytoplasm_int_tdp43 / cell_int_tdp43
+            else:
+                mislocalization_index = np.nan
+
+            # Simple classification for mislocalization
+            # Example thresholds: <0.2 => mostly nuclear, <0.5 => partial, else => mostly cytoplasmic
+            if np.isnan(mislocalization_index):
+                mislocalization_cat = "Undefined"
+            elif mislocalization_index < 0.2:
+                mislocalization_cat = "MostlyNuclear"
+            elif mislocalization_index < 0.5:
+                mislocalization_cat = "Mixed"
+            else:
+                mislocalization_cat = "MostlyCytoplasmic"
+
+            # --------------- DAPI intensities ---------------
+            nuclear_int_dapi   = np.sum(dapi_img[nucleus_mask_this])
+            nuclear_mean_dapi  = (nuclear_int_dapi / nuclear_area) if nuclear_area > 0 else 0
+            
+            # Additional morphology
+            eccentricity = cell_obj.eccentricity
+            perimeter    = cell_obj.perimeter
+            solidity     = cell_obj.solidity
+
+            # --------------- Texture / Granularity ---------------
+            # e.g. standard deviation of TDP-43 in entire cell
+            cell_tdp43_pixels = tdp43_img[cell_mask_this]
+            if len(cell_tdp43_pixels) > 0:
+                std_cell_tdp43 = np.std(cell_tdp43_pixels)
+            else:
+                std_cell_tdp43 = np.nan
+
+            # Simple classification for granularity (arbitrary thresholds)
+            if np.isnan(std_cell_tdp43):
+                granularity_cat = "Undefined"
+            elif std_cell_tdp43 < 50:
+                granularity_cat = "LowGranularity"
+            elif std_cell_tdp43 < 100:
+                granularity_cat = "ModerateGranularity"
+            else:
+                granularity_cat = "HighGranularity"
+
+            cell_measurements.append({
+                "TileIndex": tile_index,
+                "CellLabel": cell_label,
+
+                # Basic position/size
+                "CellCentroidY": cy,
+                "CellCentroidX": cx,
+                "CellBBoxMinY": bbox_min_y,
+                "CellBBoxMinX": bbox_min_x,
+                "CellBBoxMaxY": bbox_max_y,
+                "CellBBoxMaxX": bbox_max_x,
+
+                "NucleusCount": len(nuclei_for_this_cell),
+
+                "CellArea_pix": cell_area,
+                "NuclearArea_pix": nuclear_area,
+                "CytoplasmArea_pix": cytoplasm_area,
+
+                # TDP-43 integrated
+                "CellInt_TDP43": cell_int_tdp43,
+                "NuclearInt_TDP43": nuclear_int_tdp43,
+                "CytoplasmInt_TDP43": cytoplasm_int_tdp43,
+
+                # TDP-43 mean
+                "CellMean_TDP43": cell_mean_tdp43,
+                "NuclearMean_TDP43": nuclear_mean_tdp43,
+                "CytoplasmMean_TDP43": cytoplasm_mean_tdp43,
+
+                "NucCytRatio_TDP43": nuc_cyt_ratio_tdp43,
+                "FracNuclear_TDP43": frac_nuc_tdp43,
+
+                # Additional index
+                "MislocalizationIndex_TDP43": mislocalization_index,
+                "MislocalizationCategory_TDP43": mislocalization_cat,
+
+                # DAPI nucleus intensity
+                "NuclearInt_DAPI": nuclear_int_dapi,
+                "NuclearMean_DAPI": nuclear_mean_dapi,
+
+                # Morphology
+                "Eccentricity_Cell": eccentricity,
+                "Perimeter_Cell": perimeter,
+                "Solidity_Cell": solidity,
+
+                # Major/Minor axes and aspect ratio
+                "MajorAxis_Cell": major_axis_cell,
+                "MinorAxis_Cell": minor_axis_cell,
+                "Orientation_Cell_Radians": orientation_cell,
+                "AspectRatio_Cell": aspect_ratio_cell,
+                "CellShapeCategory": shape_cat_cell,
+
+                # Single-nucleus shape metrics
+                "MajorAxis_Nucleus": major_axis_nuc,
+                "MinorAxis_Nucleus": minor_axis_nuc,
+                "Orientation_Nucleus_Radians": orientation_nuc,
+                "AspectRatio_Nucleus": nuc_aspect,
+                "NucleusShapeCategory": shape_cat_nuc,
+
+                # TDP-43 texture / granularity
+                "StdTDP43_Cell": std_cell_tdp43,
+                "GranularityCategory_TDP43": granularity_cat
+            })
+        
+        df_cells = pd.DataFrame(cell_measurements)
+
+        # ---------------------------------------------------------------------
+        # Detect TDP-43 aggregates in cytoplasm
+        # ---------------------------------------------------------------------
+        aggregate_measurements = []
+        for cell_obj in cell_props:
+            cell_label = cell_obj.label
+            cell_mask_this = (labeled_cells == cell_label)
+
+            nuclei_for_this_cell = cell_to_nuclei_map.get(cell_label, [])
+            if len(nuclei_for_this_cell) == 1:
+                nucleus_mask_this = (labeled_nuclei == nuclei_for_this_cell[0])
+            elif len(nuclei_for_this_cell) > 1:
+                nucleus_mask_this = np.isin(labeled_nuclei, nuclei_for_this_cell)
+            else:
+                nucleus_mask_this = np.zeros_like(nuclei_mask, dtype=bool)
+            
+            cytoplasm_mask_this = cell_mask_this & (~nucleus_mask_this)
+
+            # Focus TDP-43 intensities on cytoplasm
+            cytoplasm_tdp43 = tdp43_img.copy()
+            cytoplasm_tdp43[~cytoplasm_mask_this] = 0
+
+            if np.any(cytoplasm_mask_this):
+                thresh_val = filters.threshold_otsu(cytoplasm_tdp43[cytoplasm_mask_this])
+            else:
+                thresh_val = 0
+            
+            factor = 3
+            aggregate_mask = (cytoplasm_tdp43 > factor * thresh_val)
+
+            # Remove small objects
+            aggregate_mask = morphology.remove_small_objects(aggregate_mask, min_size=3) # min_size of agregates pixels change
+
+            #Small granules: ~2–25 pixels²
+
+            # Label aggregates
+            labeled_agg = measure.label(aggregate_mask, connectivity=1)
+            agg_props   = measure.regionprops(labeled_agg, intensity_image=tdp43_img)
+
+            for agg in agg_props:
+                if agg.area <= 30:  # Add maximum size for agregates
+                    aggregate_measurements.append({
+                        "TileIndex": tile_index,
+                        "CellLabel": cell_label,
+                        "AggregateLabel": agg.label,
+                        "AggregateArea_pix": agg.area,
+                        "AggregateInt_TDP43": np.sum(agg.intensity_image[agg.image]),
+                        "AggregateEccentricity": agg.eccentricity
+                    })
+        df_agg = pd.DataFrame(aggregate_measurements)
+        return df_cells, df_agg
+
+    except Exception as e:
+        print(f"[Tile {tile_str}] Error occurred: {e}")
+        return None, None
+
+
+# -----------------------------------------------------------------------------
+# 4. Main Script (Sequential)
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    valid_tiles = find_valid_tile_indices()
+    print(f"Found {len(valid_tiles)} valid tiles: {valid_tiles[:10]}... (showing first 10)")
+
+    if not valid_tiles:
+        print("No valid tiles found. Exiting.")
+        raise SystemExit
+
+    all_cells_list = []
+    all_agg_list = []
+
+    # Process tiles sequentially with a progress bar
+    for tile_idx in tqdm(valid_tiles, desc="Processing Tiles"):
+        df_cells, df_agg = process_tile(tile_idx)
+        if df_cells is not None and df_agg is not None:
+            all_cells_list.append(df_cells)
+            all_agg_list.append(df_agg)
+
+    if not all_cells_list:
+        print("No tiles were successfully processed. Exiting.")
+        raise SystemExit
+
+    # Combine cell-level DataFrames
+    df_cells_all = pd.concat(all_cells_list, ignore_index=True)
+
+    # Safely combine aggregate-level DataFrames
+    # If no aggregates at all, create an empty one with the required columns.
+    if len(all_agg_list) == 0:
+        # No aggregates from any tile
+        df_agg_all = pd.DataFrame(columns=[
+            "TileIndex", "CellLabel", "AggregateLabel", 
+            "AggregateArea_pix", "AggregateInt_TDP43"
+        ])
+    else:
+        df_agg_all = pd.concat(all_agg_list, ignore_index=True)
+
+    # If df_agg_all is still empty, create a placeholder "agg_by_cell"
+    if df_agg_all.empty:
+        print("No aggregates found at all. Creating an empty aggregator summary.")
+        agg_by_cell = pd.DataFrame(columns=[
+            "TileIndex", "CellLabel",
+            "AggregateCount", "AggregateAreaSum", "AggregateIntensitySum"
+        ])
+    else:
+        # Summarize aggregates at the cell level
+        agg_by_cell = (
+            df_agg_all
+            .groupby(["TileIndex","CellLabel"])
+            .agg({
+                "AggregateLabel": "count",
+                "AggregateArea_pix": "sum",
+                "AggregateInt_TDP43": "sum"
+            })
+            .rename(columns={
+                "AggregateLabel": "AggregateCount",
+                "AggregateArea_pix": "AggregateAreaSum",
+                "AggregateInt_TDP43": "AggregateIntensitySum"
+            })
+            .reset_index()
+        )
+
+    df_cells_merged = pd.merge(df_cells_all, agg_by_cell, on=["TileIndex","CellLabel"], how="left")
+
+    # Replace NaN with 0 in aggregate columns
+    df_cells_merged[["AggregateCount","AggregateAreaSum","AggregateIntensitySum"]] = (
+        df_cells_merged[["AggregateCount","AggregateAreaSum","AggregateIntensitySum"]].fillna(0)
+    )
+
+    df_cells_merged["HasAggregates"] = df_cells_merged["AggregateCount"] > 0
+
+    # Quick summary
+    pct_with_agg = df_cells_merged["HasAggregates"].mean() * 100
+    print(f"Overall, {pct_with_agg:.2f}% of cells have TDP-43 aggregates.")
+
+    # Save final CSV
+    df_cells_merged.to_csv(output_csv_path, index=False)
+    print("Saved measurements to:", output_csv_path)
