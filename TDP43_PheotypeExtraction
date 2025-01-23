@@ -32,10 +32,10 @@ def find_valid_tile_indices():
       (3) Phenotype_Tile-XXX_c1_AF488 (raw TDP-43) in raw_image_folder
     Returns a sorted list of valid tile indices.
     """
-    pattern_cell = os.path.join(cell_mask_folder, "Phenotype_CellMask_Tile-*_c1_AF488.png*")
-    print(pattern_cell)
+    pattern_cell = os.path.join(cell_mask_folder, "Phenotype_CellMask_Tile-*_c1_AF488.tif*")
+    #print(pattern_cell)
     cell_files = sorted(glob.glob(pattern_cell))
-    print(cell_files)
+    #print(cell_files)
 
     valid_tiles = []
     for cell_path in cell_files:
@@ -49,7 +49,7 @@ def find_valid_tile_indices():
         tile_idx = int(tile_str)    # e.g. 23
 
         # Construct the other expected filenames
-        nuclei_mask_path = os.path.join(nuclei_mask_folder, f"Phenotype_NucleiMask_Tile-{tile_str}_c0_DAPI.png")
+        nuclei_mask_path = os.path.join(nuclei_mask_folder, f"Phenotype_NucleiMask_Tile-{tile_str}_c0_DAPI.tif")
         dapi_raw_path    = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c0_DAPI.tif")
         tdp43_raw_path   = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c1_AF488.tif")
 
@@ -84,8 +84,8 @@ def process_tile(tile_index):
     try:
         tile_str = f"{tile_index:03d}"  # zero-pad
         # Construct paths
-        cell_mask_path   = os.path.join(cell_mask_folder,   f"Phenotype_CellMask_Tile-{tile_str}_c1_AF488.png")
-        nuclei_mask_path = os.path.join(nuclei_mask_folder, f"Phenotype_NucleiMask_Tile-{tile_str}_c0_DAPI.png")
+        cell_mask_path   = os.path.join(cell_mask_folder,   f"Phenotype_CellMask_Tile-{tile_str}_c1_AF488.tif")
+        nuclei_mask_path = os.path.join(nuclei_mask_folder, f"Phenotype_NucleiMask_Tile-{tile_str}_c0_DAPI.tif")
         dapi_image_path  = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c0_DAPI.tif")
         tdp43_image_path = os.path.join(raw_image_folder,   f"Phenotype_Tile-{tile_str}_c1_AF488.tif")
 
@@ -212,7 +212,7 @@ def process_tile(tile_index):
                 shape_cat_nuc = "NoNucleus"
 
             cytoplasm_mask_this = np.logical_xor(cell_mask_this, nucleus_mask_this)
-            cytoplasm_mask_this[cytoplasm_mask_this < 0] = 0
+
 
             # --------------- TDP-43 Intensities ---------------
             cell_int_tdp43      = np.sum(tdp43_img[cell_mask_this])
