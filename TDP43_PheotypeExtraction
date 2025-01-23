@@ -13,12 +13,12 @@ from collections import defaultdict
 # 1. Folder Paths
 # -----------------------------------------------------------------------------
 
-cell_mask_folder = r"D:/OPS_Nov_2024/TIFF/gamma_adjusted_images/cells/Matlab_ProcessedMasks"
-nuclei_mask_folder = r"D:/OPS_Nov_2024/TIFF/gamma_adjusted_images/nuclei/Matlab_ProcessedMasks"
-raw_image_folder   = r"D:/OPS_Nov_2024/TIFF"
+cell_mask_folder = r"D:/Easin/OPS_Nov2024/Images/gamma_adjusted_images/cells/Matlab_ProcessedMasks"
 
-output_csv_path = r"D:/OPS_Nov_2024/TIFF/tdp43_measurements_all_tiles.csv"
+nuclei_mask_folder = r"D:/Easin/OPS_Nov2024/Images/gamma_adjusted_images/nuclei/Matlab_ProcessedMasks"
+raw_image_folder   = r"D:/Easin/OPS_Nov2024/Images/OriginalTIFF"
 
+output_csv_path = r"D:/Easin/OPS_Nov2024/MatlLabGeneratedMasks_Phenotype_Quantification/tdp43_measurements_all_tiles.csv"
 
 # -----------------------------------------------------------------------------
 # 2. Find Valid Tile Indices
