@@ -1,0 +1,479 @@
+CellProfiler Pipeline: http://www.cellprofiler.org
+Version:5
+DateRevision:426
+GitHash:
+ModuleCount:31
+HasImagePlaneDetails:False
+
+Images:[module_num:1|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:['Check If each cell has one nucelus....']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    :
+    Filter images?:Images only
+    Select the rule criteria:and (extension does isimage) (directory doesnot containregexp "[\/]\.")
+
+Metadata:[module_num:2|svn_version:'Unknown'|variable_revision_number:6|show_window:False|notes:['The Metadata module optionally allows you to extract information describing your images (i.e, metadata) which will be stored along with your measurements. This information can be contained in the file name and/or location, or in an external file.']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Extract metadata?:No
+    Metadata data type:Text
+    Metadata types:{}
+    Extraction method count:1
+    Metadata extraction method:Extract from file/folder names
+    Metadata source:File name
+    Regular expression to extract from file name:^(?P<Plate>.*)_(?P<Well>[A-P][0-9]{2})_s(?P<Site>[0-9])_w(?P<ChannelNumber>[0-9])
+    Regular expression to extract from folder name:(?P<Date>[0-9]{4}_[0-9]{2}_[0-9]{2})$
+    Extract metadata from:All images
+    Select the filtering criteria:and (file does contain "")
+    Metadata file location:Elsewhere...|
+    Match file and image metadata:[]
+    Use case insensitive matching?:No
+    Metadata file name:None
+    Does cached metadata exist?:No
+
+NamesAndTypes:[module_num:3|svn_version:'Unknown'|variable_revision_number:8|show_window:False|notes:['The NamesAndTypes module allows you to assign a meaningful name to each image by which other modules will refer to it.']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Assign a name to:Images matching rules
+    Select the image type:Grayscale image
+    Name to assign these images:DNA
+    Match metadata:[]
+    Image set matching method:Order
+    Set intensity range from:Image metadata
+    Assignments count:4
+    Single images count:0
+    Maximum intensity:255.0
+    Process as 3D?:No
+    Relative pixel spacing in X:1.0
+    Relative pixel spacing in Y:1.0
+    Relative pixel spacing in Z:1.0
+    Select the rule criteria:and (file does contain "DAPI") (file does contain "Phenotype") (extension does istif)
+    Name to assign these images:DAPI
+    Name to assign these objects:Cell
+    Select the image type:Grayscale image
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+    Select the rule criteria:and (file does contain "NucleiMask")
+    Name to assign these images:NucleiMask
+    Name to assign these objects:NucleiMask
+    Select the image type:Objects
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+    Select the rule criteria:and (file does contain "CellMask")
+    Name to assign these images:CellMask
+    Name to assign these objects:CellMask
+    Select the image type:Objects
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+    Select the rule criteria:and (file does contain "AF488") (file does contain "Phenotype") (extension does istif)
+    Name to assign these images:AF488
+    Name to assign these objects:Cell
+    Select the image type:Grayscale image
+    Set intensity range from:Image metadata
+    Maximum intensity:255.0
+
+Groups:[module_num:4|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:['The Groups module optionally allows you to split your list of images into image subsets (groups) which will be processed independently of each other. Examples of groupings include screening batches, microtiter plates, time-lapse movies, etc.']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Do you want to group your images?:No
+    grouping metadata count:1
+    Metadata category:None
+
+FilterObjects:[module_num:5|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:CellMask
+    Name the output objects:CellAwayFromBorder
+    Select the filtering mode:Image or mask border
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:None
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:1
+    Additional object count:0
+    Assign overlapping child to:Both parents
+    Keep removed objects as a separate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:AreaShape_Area
+    Filter using a minimum measurement value?:Yes
+    Minimum value:0.0
+    Filter using a maximum measurement value?:Yes
+    Maximum value:1.0
+    Allow fuzzy feature matching?:No
+
+FilterObjects:[module_num:6|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:NucleiMask
+    Name the output objects:NucleiAwayFromBorder
+    Select the filtering mode:Image or mask border
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:None
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:1
+    Additional object count:0
+    Assign overlapping child to:Both parents
+    Keep removed objects as a separate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:AreaShape_Area
+    Filter using a minimum measurement value?:Yes
+    Minimum value:0.0
+    Filter using a maximum measurement value?:Yes
+    Maximum value:1.0
+    Allow fuzzy feature matching?:No
+
+MeasureObjectSizeShape:[module_num:7|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select object sets to measure:CellAwayFromBorder, NucleiAwayFromBorder
+    Calculate the Zernike features?:No
+    Calculate the advanced features?:No
+
+FilterObjects:[module_num:8|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:CellAwayFromBorder
+    Name the output objects:SizeFilteredCellAwayFromBorder1
+    Select the filtering mode:Measurements
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:NucleiAwayFromBorder
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:1
+    Additional object count:0
+    Assign overlapping child to:Parent with most overlap
+    Keep removed objects as a separate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:AreaShape_Area
+    Filter using a minimum measurement value?:Yes
+    Minimum value:4500
+    Filter using a maximum measurement value?:No
+    Maximum value:1.0
+    Allow fuzzy feature matching?:No
+
+FilterObjects:[module_num:9|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:NucleiAwayFromBorder
+    Name the output objects:SizeFilteredNucleiAwayFromBorder1
+    Select the filtering mode:Measurements
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:NucleiAwayFromBorder
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:1
+    Additional object count:0
+    Assign overlapping child to:Parent with most overlap
+    Keep removed objects as a separate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:AreaShape_Area
+    Filter using a minimum measurement value?:Yes
+    Minimum value:500
+    Filter using a maximum measurement value?:No
+    Maximum value:1.0
+    Allow fuzzy feature matching?:No
+
+MeasureObjectSizeShape:[module_num:10|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select object sets to measure:SizeFilteredCellAwayFromBorder1, SizeFilteredNucleiAwayFromBorder1
+    Calculate the Zernike features?:No
+    Calculate the advanced features?:No
+
+RelateObjects:[module_num:11|svn_version:'Unknown'|variable_revision_number:5|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Parent objects:SizeFilteredCellAwayFromBorder1
+    Child objects:SizeFilteredNucleiAwayFromBorder1
+    Calculate child-parent distances?:None
+    Calculate per-parent means for all child measurements?:Yes
+    Calculate distances to other parents?:Yes
+    Do you want to save the children with parents as a new object set?:Yes
+    Name the output object:CellAndMultiNucleiObject1
+    Parent name:None
+    Parent name:None
+
+CalculateMath:[module_num:12|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Name the output measurement:Cell_Nucleus_SizeDifference
+    Operation:Subtract
+    Select the minuend measurement type:Object
+    Select the minuend objects:SizeFilteredCellAwayFromBorder1
+    Select the minuend measurement:AreaShape_Area
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Select the subtrahend measurement type:Object
+    Select the subtrahend objects:SizeFilteredNucleiAwayFromBorder1
+    Select the subtrahend measurement:AreaShape_Area
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Take log10 of result?:No
+    Multiply the result by:1.0
+    Raise the power of result by:1.0
+    Add to the result:0.0
+    How should the output value be rounded?:Rounded to a specified number of decimal places
+    Enter how many decimal places the value should be rounded to:4
+    Constrain the result to a lower bound?:No
+    Enter the lower bound:0.0
+    Constrain the result to an upper bound?:No
+    Enter the upper bound:1.0
+
+FilterObjects:[module_num:13|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:SizeFilteredCellAwayFromBorder1
+    Name the output objects:SizeFilteredCellAwayFromBorder2
+    Select the filtering mode:Measurements
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:CellAndMultiNucleiObject
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:1
+    Additional object count:0
+    Assign overlapping child to:Both parents
+    Keep removed objects as a separate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:Math_Cell_Nucleus_SizeDifference
+    Filter using a minimum measurement value?:Yes
+    Minimum value:50
+    Filter using a maximum measurement value?:No
+    Maximum value:1.5
+    Allow fuzzy feature matching?:No
+
+FilterObjects:[module_num:14|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:SizeFilteredNucleiAwayFromBorder1
+    Name the output objects:SizeFilteredNucleiAwayFromBorder2
+    Select the filtering mode:Measurements
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:CellAndMultiNucleiObject
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:1
+    Additional object count:0
+    Assign overlapping child to:Both parents
+    Keep removed objects as a separate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:Math_Cell_Nucleus_SizeDifference
+    Filter using a minimum measurement value?:Yes
+    Minimum value:50
+    Filter using a maximum measurement value?:No
+    Maximum value:1.5
+    Allow fuzzy feature matching?:No
+
+RelateObjects:[module_num:15|svn_version:'Unknown'|variable_revision_number:5|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Parent objects:SizeFilteredCellAwayFromBorder2
+    Child objects:SizeFilteredNucleiAwayFromBorder2
+    Calculate child-parent distances?:None
+    Calculate per-parent means for all child measurements?:Yes
+    Calculate distances to other parents?:Yes
+    Do you want to save the children with parents as a new object set?:Yes
+    Name the output object:CellAndMultiNucleiObject
+    Parent name:None
+    Parent name:None
+
+FilterObjects:[module_num:16|svn_version:'Unknown'|variable_revision_number:10|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the objects to filter:SizeFilteredCellAwayFromBorder2
+    Name the output objects:MonoNuclearCells
+    Select the filtering mode:Measurements
+    Select the filtering method:Limits
+    Select the objects that contain the filtered objects:CellAndMultiNucleiObject
+    Select the location of the rules or classifier file:Elsewhere...|
+    Rules or classifier file name:rules.txt
+    Class number:1
+    Measurement count:1
+    Additional object count:0
+    Assign overlapping child to:Both parents
+    Keep removed objects as a separate set?:No
+    Name the objects removed by the filter:RemovedObjects
+    Select the measurement to filter by:Children_SizeFilteredNucleiAwayFromBorder2_Count
+    Filter using a minimum measurement value?:Yes
+    Minimum value:0.5
+    Filter using a maximum measurement value?:Yes
+    Maximum value:1.5
+    Allow fuzzy feature matching?:No
+
+RelateObjects:[module_num:17|svn_version:'Unknown'|variable_revision_number:5|show_window:False|notes:['Must re relate again to get the associated nucleus couldnt find a better way to do it']|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Parent objects:MonoNuclearCells
+    Child objects:SizeFilteredNucleiAwayFromBorder2
+    Calculate child-parent distances?:None
+    Calculate per-parent means for all child measurements?:Yes
+    Calculate distances to other parents?:Yes
+    Do you want to save the children with parents as a new object set?:Yes
+    Name the output object:MonoNuclearCellsNucleus
+    Parent name:None
+    Parent name:None
+
+ExpandOrShrinkObjects:[module_num:18|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input objects:MonoNuclearCells
+    Name the output objects:ShrunkenMonoNuclearCells
+    Select the operation:Add partial dividing lines between objects
+    Number of pixels by which to expand or shrink:1
+    Fill holes in objects so that all objects shrink to a single point?:No
+    Expand or shrink measurement:None
+
+ExpandOrShrinkObjects:[module_num:19|svn_version:'Unknown'|variable_revision_number:2|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input objects:MonoNuclearCellsNucleus
+    Name the output objects:ShrunkenMonoNuclearNucleus
+    Select the operation:Add partial dividing lines between objects
+    Number of pixels by which to expand or shrink:1
+    Fill holes in objects so that all objects shrink to a single point?:No
+    Expand or shrink measurement:None
+
+IdentifyTertiaryObjects:[module_num:20|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the larger identified objects:ShrunkenMonoNuclearCells
+    Select the smaller identified objects:ShrunkenMonoNuclearNucleus
+    Name the tertiary objects to be identified:CytoplasmObject
+    Shrink smaller object prior to subtraction?:Yes
+
+MeasureObjectSizeShape:[module_num:21|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select object sets to measure:ShrunkenMonoNuclearCells, ShrunkenMonoNuclearNucleus
+    Calculate the Zernike features?:No
+    Calculate the advanced features?:No
+
+MeasureObjectIntensity:[module_num:22|svn_version:'Unknown'|variable_revision_number:4|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select images to measure:AF488, DAPI
+    Select objects to measure:CytoplasmObject, MonoNuclearCells, MonoNuclearCellsNucleus, ShrunkenMonoNuclearCells, ShrunkenMonoNuclearNucleus
+
+MeasureObjectIntensityDistribution:[module_num:23|svn_version:'Unknown'|variable_revision_number:6|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select images to measure:AF488
+    Hidden:1
+    Hidden:1
+    Hidden:0
+    Calculate intensity Zernikes?:Magnitudes and phase
+    Maximum zernike moment:9
+    Select objects to measure:ShrunkenMonoNuclearCells
+    Object to use as center?:Edges of other objects
+    Select objects to use as centers:ShrunkenMonoNuclearNucleus
+    Scale the bins?:Yes
+    Number of bins:4
+    Maximum radius:100
+
+CalculateMath:[module_num:24|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Name the output measurement:Volume_NucToCell_Percentage
+    Operation:Divide
+    Select the numerator measurement type:Object
+    Select the numerator objects:ShrunkenMonoNuclearNucleus
+    Select the numerator measurement:AreaShape_Area
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Select the denominator measurement type:Object
+    Select the denominator objects:ShrunkenMonoNuclearCells
+    Select the denominator measurement:AreaShape_Area
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Take log10 of result?:No
+    Multiply the result by:100.0
+    Raise the power of result by:1.0
+    Add to the result:0.0
+    How should the output value be rounded?:Rounded to a specified number of decimal places
+    Enter how many decimal places the value should be rounded to:2
+    Constrain the result to a lower bound?:No
+    Enter the lower bound:0.0
+    Constrain the result to an upper bound?:No
+    Enter the upper bound:1.0
+
+CalculateMath:[module_num:25|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Name the output measurement:TDP43_NucToCell_Percentage
+    Operation:Divide
+    Select the numerator measurement type:Object
+    Select the numerator objects:ShrunkenMonoNuclearNucleus
+    Select the numerator measurement:Intensity_IntegratedIntensity_AF488
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Select the denominator measurement type:Object
+    Select the denominator objects:ShrunkenMonoNuclearCells
+    Select the denominator measurement:Intensity_IntegratedIntensity_AF488
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Take log10 of result?:No
+    Multiply the result by:100.0
+    Raise the power of result by:1.0
+    Add to the result:0.0
+    How should the output value be rounded?:Rounded to a specified number of decimal places
+    Enter how many decimal places the value should be rounded to:2
+    Constrain the result to a lower bound?:No
+    Enter the lower bound:0.0
+    Constrain the result to an upper bound?:No
+    Enter the upper bound:1.0
+
+CalculateMath:[module_num:26|svn_version:'Unknown'|variable_revision_number:3|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Name the output measurement:TDP43_log10_NucToCytoRatio
+    Operation:Divide
+    Select the numerator measurement type:Object
+    Select the numerator objects:ShrunkenMonoNuclearNucleus
+    Select the numerator measurement:Intensity_MeanIntensity_AF488
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Select the denominator measurement type:Object
+    Select the denominator objects:CytoplasmObject
+    Select the denominator measurement:Intensity_MeanIntensity_AF488
+    Multiply the above operand by:1.0
+    Raise the power of above operand by:1.0
+    Take log10 of result?:Yes
+    Multiply the result by:1
+    Raise the power of result by:1.0
+    Add to the result:0.0
+    How should the output value be rounded?:Rounded to a specified number of decimal places
+    Enter how many decimal places the value should be rounded to:4
+    Constrain the result to a lower bound?:No
+    Enter the lower bound:0.0
+    Constrain the result to an upper bound?:No
+    Enter the upper bound:1.0
+
+ExportToSpreadsheet:[module_num:27|svn_version:'Unknown'|variable_revision_number:13|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the column delimiter:Comma (",")
+    Add image metadata columns to your object data file?:Yes
+    Add image file and folder names to your object data file?:Yes
+    Select the measurements to export:Yes
+    Calculate the per-image mean values for object measurements?:No
+    Calculate the per-image median values for object measurements?:No
+    Calculate the per-image standard deviation values for object measurements?:No
+    Output file location:Elsewhere...|Z:\\Easin\\OPS_Nov2024\\CellProfilerGeneratedMasks_Phenotype_Quantification
+    Create a GenePattern GCT file?:No
+    Select source of sample row name:Metadata
+    Select the image to use as the identifier:None
+    Select the metadata to use as the identifier:None
+    Export all measurement types?:Yes
+    Press button to select measurements:ShrunkenMonoNuclearCells|Intensity_IntegratedIntensityEdge_AF488,ShrunkenMonoNuclearCells|Intensity_IntegratedIntensityEdge_DAPI,ShrunkenMonoNuclearCells|Intensity_LowerQuartileIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_LowerQuartileIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_MaxIntensityEdge_AF488,ShrunkenMonoNuclearCells|Intensity_MaxIntensityEdge_DAPI,ShrunkenMonoNuclearCells|Intensity_MaxIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_MaxIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_MinIntensityEdge_AF488,ShrunkenMonoNuclearCells|Intensity_MinIntensityEdge_DAPI,ShrunkenMonoNuclearCells|Intensity_IntegratedIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_IntegratedIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_MeanIntensityEdge_DAPI,ShrunkenMonoNuclearCells|Intensity_MeanIntensityEdge_AF488,ShrunkenMonoNuclearCells|Intensity_MeanIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_MeanIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_MinIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_MinIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_MADIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_MADIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_MassDisplacement_AF488,ShrunkenMonoNuclearCells|Intensity_MassDisplacement_DAPI,ShrunkenMonoNuclearCells|Intensity_StdIntensityEdge_DAPI,ShrunkenMonoNuclearCells|Intensity_StdIntensityEdge_AF488,ShrunkenMonoNuclearCells|Intensity_StdIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_StdIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_UpperQuartileIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_UpperQuartileIntensity_DAPI,ShrunkenMonoNuclearCells|Intensity_MedianIntensity_AF488,ShrunkenMonoNuclearCells|Intensity_MedianIntensity_DAPI,ShrunkenMonoNuclearCells|Location_MaxIntensity_Z_AF488,ShrunkenMonoNuclearCells|Location_MaxIntensity_Z_DAPI,ShrunkenMonoNuclearCells|Location_MaxIntensity_Y_DAPI,ShrunkenMonoNuclearCells|Location_MaxIntensity_Y_AF488,ShrunkenMonoNuclearCells|Location_MaxIntensity_X_DAPI,ShrunkenMonoNuclearCells|Location_MaxIntensity_X_AF488,ShrunkenMonoNuclearCells|Location_CenterMassIntensity_Y_DAPI,ShrunkenMonoNuclearCells|Location_CenterMassIntensity_Y_AF488,ShrunkenMonoNuclearCells|Location_CenterMassIntensity_X_AF488,ShrunkenMonoNuclearCells|Location_CenterMassIntensity_X_DAPI,ShrunkenMonoNuclearCells|Location_CenterMassIntensity_Z_AF488,ShrunkenMonoNuclearCells|Location_CenterMassIntensity_Z_DAPI,ShrunkenMonoNuclearCells|Location_Center_Y,ShrunkenMonoNuclearCells|Location_Center_X,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_5_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_5_5,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_5_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_4_4,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_4_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_4_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_6_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_6_6,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_6_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_6_4,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_7_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_7_7,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_7_5,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_7_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_8_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_8_4,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_8_8,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_8_6,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_8_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_3_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_3_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_2_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_2_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_9_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_9_9,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_9_7,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_9_5,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_9_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_0_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikePhase_AF488_1_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_7_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_7_5,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_7_7,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_7_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_9_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_9_7,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_9_9,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_9_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_9_5,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_8_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_8_6,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_8_8,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_8_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_8_4,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_5_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_5_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_5_5,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_2_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_2_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_6_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_6_6,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_6_4,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_6_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_3_3,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_3_1,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_0_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_4_0,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_4_4,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_4_2,ShrunkenMonoNuclearCells|RadialDistribution_ZernikeMagnitude_AF488_1_1,ShrunkenMonoNuclearCells|RadialDistribution_RadialCV_AF488_2of4,ShrunkenMonoNuclearCells|RadialDistribution_RadialCV_AF488_4of4,ShrunkenMonoNuclearCells|RadialDistribution_RadialCV_AF488_1of4,ShrunkenMonoNuclearCells|RadialDistribution_RadialCV_AF488_3of4,ShrunkenMonoNuclearCells|RadialDistribution_MeanFrac_AF488_3of4,ShrunkenMonoNuclearCells|RadialDistribution_MeanFrac_AF488_2of4,ShrunkenMonoNuclearCells|RadialDistribution_MeanFrac_AF488_1of4,ShrunkenMonoNuclearCells|RadialDistribution_MeanFrac_AF488_4of4,ShrunkenMonoNuclearCells|RadialDistribution_FracAtD_AF488_1of4,ShrunkenMonoNuclearCells|RadialDistribution_FracAtD_AF488_4of4,ShrunkenMonoNuclearCells|RadialDistribution_FracAtD_AF488_3of4,ShrunkenMonoNuclearCells|RadialDistribution_FracAtD_AF488_2of4,ShrunkenMonoNuclearCells|AreaShape_Area,ShrunkenMonoNuclearCells|AreaShape_BoundingBoxMaximum_Y,ShrunkenMonoNuclearCells|AreaShape_BoundingBoxMaximum_X,ShrunkenMonoNuclearCells|AreaShape_EquivalentDiameter,ShrunkenMonoNuclearCells|AreaShape_BoundingBoxMinimum_Y,ShrunkenMonoNuclearCells|AreaShape_BoundingBoxMinimum_X,ShrunkenMonoNuclearCells|AreaShape_EulerNumber,ShrunkenMonoNuclearCells|AreaShape_BoundingBoxArea,ShrunkenMonoNuclearCells|AreaShape_Eccentricity,ShrunkenMonoNuclearCells|AreaShape_MedianRadius,ShrunkenMonoNuclearCells|AreaShape_Compactness,ShrunkenMonoNuclearCells|AreaShape_MeanRadius,ShrunkenMonoNuclearCells|AreaShape_Center_X,ShrunkenMonoNuclearCells|AreaShape_Center_Y,ShrunkenMonoNuclearCells|AreaShape_Orientation,ShrunkenMonoNuclearCells|AreaShape_MinorAxisLength,ShrunkenMonoNuclearCells|AreaShape_FormFactor,ShrunkenMonoNuclearCells|AreaShape_ConvexArea,ShrunkenMonoNuclearCells|AreaShape_Solidity,ShrunkenMonoNuclearCells|AreaShape_Extent,ShrunkenMonoNuclearCells|AreaShape_MaximumRadius,ShrunkenMonoNuclearCells|AreaShape_MajorAxisLength,ShrunkenMonoNuclearCells|AreaShape_Perimeter,ShrunkenMonoNuclearCells|AreaShape_MinFeretDiameter,ShrunkenMonoNuclearCells|AreaShape_MaxFeretDiameter,ShrunkenMonoNuclearCells|Number_Object_Number,ShrunkenMonoNuclearCells|Math_Volume_NucToCell_Percentage,ShrunkenMonoNuclearCells|Math_TDP43_NucToCell_Percentage,ShrunkenMonoNuclearCells|Children_CytoplasmObject_Count,Image|PathName_AF488,Image|PathName_DAPI,Image|FileName_DAPI,Image|FileName_AF488,ShrunkenMonoNuclearNucleus|AreaShape_ConvexArea,ShrunkenMonoNuclearNucleus|AreaShape_MedianRadius,ShrunkenMonoNuclearNucleus|AreaShape_Extent,ShrunkenMonoNuclearNucleus|AreaShape_MinFeretDiameter,ShrunkenMonoNuclearNucleus|AreaShape_FormFactor,ShrunkenMonoNuclearNucleus|AreaShape_Perimeter,ShrunkenMonoNuclearNucleus|AreaShape_MaximumRadius,ShrunkenMonoNuclearNucleus|AreaShape_Compactness,ShrunkenMonoNuclearNucleus|AreaShape_Area,ShrunkenMonoNuclearNucleus|AreaShape_BoundingBoxMaximum_X,ShrunkenMonoNuclearNucleus|AreaShape_BoundingBoxMaximum_Y,ShrunkenMonoNuclearNucleus|AreaShape_EulerNumber,ShrunkenMonoNuclearNucleus|AreaShape_Center_X,ShrunkenMonoNuclearNucleus|AreaShape_Center_Y,ShrunkenMonoNuclearNucleus|AreaShape_Orientation,ShrunkenMonoNuclearNucleus|AreaShape_MajorAxisLength,ShrunkenMonoNuclearNucleus|AreaShape_MaxFeretDiameter,ShrunkenMonoNuclearNucleus|AreaShape_MinorAxisLength,ShrunkenMonoNuclearNucleus|AreaShape_BoundingBoxArea,ShrunkenMonoNuclearNucleus|AreaShape_BoundingBoxMinimum_Y,ShrunkenMonoNuclearNucleus|AreaShape_BoundingBoxMinimum_X,ShrunkenMonoNuclearNucleus|AreaShape_EquivalentDiameter,ShrunkenMonoNuclearNucleus|AreaShape_MeanRadius,ShrunkenMonoNuclearNucleus|AreaShape_Solidity,ShrunkenMonoNuclearNucleus|AreaShape_Eccentricity,ShrunkenMonoNuclearNucleus|Intensity_MADIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_MADIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MeanIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MeanIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_MeanIntensityEdge_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MeanIntensityEdge_AF488,ShrunkenMonoNuclearNucleus|Intensity_UpperQuartileIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_UpperQuartileIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_IntegratedIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_IntegratedIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MinIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MinIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_MedianIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_MedianIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MaxIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_MaxIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MinIntensityEdge_AF488,ShrunkenMonoNuclearNucleus|Intensity_MinIntensityEdge_DAPI,ShrunkenMonoNuclearNucleus|Intensity_StdIntensityEdge_AF488,ShrunkenMonoNuclearNucleus|Intensity_StdIntensityEdge_DAPI,ShrunkenMonoNuclearNucleus|Intensity_IntegratedIntensityEdge_AF488,ShrunkenMonoNuclearNucleus|Intensity_IntegratedIntensityEdge_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MaxIntensityEdge_DAPI,ShrunkenMonoNuclearNucleus|Intensity_MaxIntensityEdge_AF488,ShrunkenMonoNuclearNucleus|Intensity_StdIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_StdIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_LowerQuartileIntensity_DAPI,ShrunkenMonoNuclearNucleus|Intensity_LowerQuartileIntensity_AF488,ShrunkenMonoNuclearNucleus|Intensity_MassDisplacement_AF488,ShrunkenMonoNuclearNucleus|Intensity_MassDisplacement_DAPI,ShrunkenMonoNuclearNucleus|Math_TDP43_log10_NucToCytoRatio,ShrunkenMonoNuclearNucleus|Math_TDP43_NucToCell_Percentage,ShrunkenMonoNuclearNucleus|Math_Volume_NucToCell_Percentage,ShrunkenMonoNuclearNucleus|Location_CenterMassIntensity_X_AF488,ShrunkenMonoNuclearNucleus|Location_CenterMassIntensity_X_DAPI,ShrunkenMonoNuclearNucleus|Location_CenterMassIntensity_Z_DAPI,ShrunkenMonoNuclearNucleus|Location_CenterMassIntensity_Z_AF488,ShrunkenMonoNuclearNucleus|Location_CenterMassIntensity_Y_DAPI,ShrunkenMonoNuclearNucleus|Location_CenterMassIntensity_Y_AF488,ShrunkenMonoNuclearNucleus|Location_MaxIntensity_Y_DAPI,ShrunkenMonoNuclearNucleus|Location_MaxIntensity_Y_AF488,ShrunkenMonoNuclearNucleus|Location_MaxIntensity_Z_AF488,ShrunkenMonoNuclearNucleus|Location_MaxIntensity_Z_DAPI,ShrunkenMonoNuclearNucleus|Location_MaxIntensity_X_AF488,ShrunkenMonoNuclearNucleus|Location_MaxIntensity_X_DAPI,ShrunkenMonoNuclearNucleus|Location_Center_Y,ShrunkenMonoNuclearNucleus|Location_Center_X,ShrunkenMonoNuclearNucleus|Children_CytoplasmObject_Count,ShrunkenMonoNuclearNucleus|Number_Object_Number,CytoplasmObject|Location_MaxIntensity_Z_DAPI,CytoplasmObject|Location_MaxIntensity_Z_AF488,CytoplasmObject|Location_MaxIntensity_X_AF488,CytoplasmObject|Location_MaxIntensity_X_DAPI,CytoplasmObject|Location_MaxIntensity_Y_AF488,CytoplasmObject|Location_MaxIntensity_Y_DAPI,CytoplasmObject|Location_CenterMassIntensity_Y_DAPI,CytoplasmObject|Location_CenterMassIntensity_Y_AF488,CytoplasmObject|Location_CenterMassIntensity_X_AF488,CytoplasmObject|Location_CenterMassIntensity_X_DAPI,CytoplasmObject|Location_CenterMassIntensity_Z_AF488,CytoplasmObject|Location_CenterMassIntensity_Z_DAPI,CytoplasmObject|Location_Center_Y,CytoplasmObject|Location_Center_X,CytoplasmObject|Intensity_MedianIntensity_DAPI,CytoplasmObject|Intensity_MedianIntensity_AF488,CytoplasmObject|Intensity_MeanIntensity_DAPI,CytoplasmObject|Intensity_MeanIntensity_AF488,CytoplasmObject|Intensity_MinIntensity_AF488,CytoplasmObject|Intensity_MinIntensity_DAPI,CytoplasmObject|Intensity_IntegratedIntensityEdge_AF488,CytoplasmObject|Intensity_IntegratedIntensityEdge_DAPI,CytoplasmObject|Intensity_MinIntensityEdge_AF488,CytoplasmObject|Intensity_MinIntensityEdge_DAPI,CytoplasmObject|Intensity_LowerQuartileIntensity_DAPI,CytoplasmObject|Intensity_LowerQuartileIntensity_AF488,CytoplasmObject|Intensity_MassDisplacement_DAPI,CytoplasmObject|Intensity_MassDisplacement_AF488,CytoplasmObject|Intensity_MeanIntensityEdge_AF488,CytoplasmObject|Intensity_MeanIntensityEdge_DAPI,CytoplasmObject|Intensity_MADIntensity_DAPI,CytoplasmObject|Intensity_MADIntensity_AF488,CytoplasmObject|Intensity_UpperQuartileIntensity_AF488,CytoplasmObject|Intensity_UpperQuartileIntensity_DAPI,CytoplasmObject|Intensity_MaxIntensity_DAPI,CytoplasmObject|Intensity_MaxIntensity_AF488,CytoplasmObject|Intensity_StdIntensityEdge_DAPI,CytoplasmObject|Intensity_StdIntensityEdge_AF488,CytoplasmObject|Intensity_IntegratedIntensity_DAPI,CytoplasmObject|Intensity_IntegratedIntensity_AF488,CytoplasmObject|Intensity_StdIntensity_AF488,CytoplasmObject|Intensity_StdIntensity_DAPI,CytoplasmObject|Intensity_MaxIntensityEdge_DAPI,CytoplasmObject|Intensity_MaxIntensityEdge_AF488,CytoplasmObject|Parent_ShrunkenMonoNuclearCells,CytoplasmObject|Parent_ShrunkenMonoNuclearNucleus,CytoplasmObject|Math_TDP43_log10_NucToCytoRatio,CytoplasmObject|Number_Object_Number
+    Representation of Nan/Inf:NaN
+    Add a prefix to file names?:Yes
+    Filename prefix:CellProfilerGeneratedMasks_Phenotype_Quantification
+    Overwrite existing files without warning?:Yes
+    Data to export:Image
+    Combine these object measurements with those of the previous object?:No
+    File name:DATA.csv
+    Use the object name for the file name?:Yes
+
+ConvertObjectsToImage:[module_num:28|svn_version:'Unknown'|variable_revision_number:1|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input objects:ShrunkenMonoNuclearCells
+    Name the output image:MonoNuclearCellMaskImage
+    Select the color format:Binary (black & white)
+    Select the colormap:Default
+
+ConvertObjectsToImage:[module_num:29|svn_version:'Unknown'|variable_revision_number:1|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the input objects:ShrunkenMonoNuclearNucleus
+    Name the output image:MonoNuclearCellNucleusMaskImage
+    Select the color format:Binary (black & white)
+    Select the colormap:Default
+
+SaveImages:[module_num:30|svn_version:'Unknown'|variable_revision_number:16|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the type of image to save:Image
+    Select the image to save:MonoNuclearCellMaskImage
+    Select method for constructing file names:From image filename
+    Select image name for file prefix:AF488
+    Enter single file name:OrigBlue
+    Number of digits:4
+    Append a suffix to the image file name?:Yes
+    Text to append to the image name:_ProcessedCellMask
+    Saved file format:tiff
+    Output file location:Elsewhere...|Z:\\Easin\\OPS_Nov2024\\Images\\gamma_adjusted_images\\cells\\CellProfiler_ProcessedMasks
+    Image bit depth:16-bit integer
+    Overwrite existing files without warning?:No
+    When to save:Every cycle
+    Record the file and path information to the saved image?:No
+    Create subfolders in the output folder?:No
+    Base image folder:Elsewhere...|
+    How to save the series:T (Time)
+    Save with lossless compression?:No
+
+SaveImages:[module_num:31|svn_version:'Unknown'|variable_revision_number:16|show_window:False|notes:[]|batch_state:array([], dtype=uint8)|enabled:True|wants_pause:False]
+    Select the type of image to save:Image
+    Select the image to save:MonoNuclearCellNucleusMaskImage
+    Select method for constructing file names:From image filename
+    Select image name for file prefix:DAPI
+    Enter single file name:OrigBlue
+    Number of digits:4
+    Append a suffix to the image file name?:Yes
+    Text to append to the image name:_ProcessedCellMask
+    Saved file format:tiff
+    Output file location:Elsewhere...|Z:\\Easin\\OPS_Nov2024\\Images\\gamma_adjusted_images\\nuclei\\CellProfiler_ProcessedMasks
+    Image bit depth:16-bit integer
+    Overwrite existing files without warning?:No
+    When to save:Every cycle
+    Record the file and path information to the saved image?:No
+    Create subfolders in the output folder?:No
+    Base image folder:Elsewhere...|
+    How to save the series:T (Time)
+    Save with lossless compression?:No
