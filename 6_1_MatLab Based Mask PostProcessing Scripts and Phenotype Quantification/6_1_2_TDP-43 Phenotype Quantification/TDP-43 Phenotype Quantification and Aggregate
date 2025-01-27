@@ -1,3 +1,46 @@
+# Title: Comprehensive TDP-43 Phenotype Quantification and Aggregates Analysis Pipeline
+
+# Description:
+# This Python script processes microscopy images and mask files to quantify TDP-43 intensities, nuclear features, 
+# and cellular morphology, while also identifying and characterizing TDP-43 aggregates at the single-cell level. 
+# It integrates information from raw images, nuclear masks, and cell masks to produce detailed quantitative outputs, 
+# including mislocalization indices and aggregate summaries.
+
+# Key Features:
+# 1. **Valid Tile Identification**: 
+#    - Automatically identifies valid tiles by checking the existence of required input files (cell masks, nuclear masks, and raw images).
+# 
+# 2. **Single-Cell Feature Quantification**:
+#    - Measures TDP-43 intensities in cells, nuclei, and cytoplasm.
+#    - Calculates morphological features, such as aspect ratio, eccentricity, and solidity, for both cells and nuclei.
+#    - Derives mislocalization indices and simple classifications for TDP-43 distribution.
+
+# 3. **TDP-43 Aggregate Detection**:
+#    - Detects TDP-43 aggregates in the cytoplasm using adaptive thresholds and morphological filters.
+#    - Measures aggregate size, intensity, and eccentricity.
+
+# 4. **Aggregate Summary**:
+#    - Summarizes aggregate features at the single-cell level (e.g., aggregate count, total area, and total intensity).
+#    - Provides a binary classification for the presence of aggregates.
+
+# 5. **Granularity Analysis**:
+#    - Calculates texture/granularity metrics (e.g., standard deviation of TDP-43 intensities) to further describe cellular phenotypes.
+
+# 6. **Data Integration**:
+#    - Combines all measurements (cell-level and aggregate-level) into a final DataFrame.
+#    - Outputs a detailed CSV report containing measurements for each cell, with aggregate summaries included.
+
+# 7. **Usage**:
+#    - Processes images and masks located in user-specified input directories.
+#    - Generates results for all valid tiles and saves them as a consolidated CSV file.
+
+# 8. **Output**:
+#    - A CSV file containing detailed single-cell phenotypic measurements and TDP-43 aggregate statistics, 
+#      enabling downstream statistical or visual analysis.
+
+
+
+
 import os
 import re
 import glob
