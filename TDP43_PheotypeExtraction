@@ -97,7 +97,9 @@ def process_tile(tile_index):
         
         # Read images
         cell_mask   = io.imread(cell_mask_path).astype(bool)
+        cell_mask   = ~cell_mask  # invert cell mask
         nuclei_mask = io.imread(nuclei_mask_path).astype(bool)
+        nuc_mask = ~nuc_mask  # invert nucleus mask
 
         
         dapi_img    = io.imread(dapi_image_path)
