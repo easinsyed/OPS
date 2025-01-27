@@ -106,8 +106,8 @@ def process_tile(tile_index):
         tdp43_img   = io.imread(tdp43_image_path)
         
         # Label masks
-        labeled_cells  = measure.label(cell_mask, connectivity=1)
-        labeled_nuclei = measure.label(nuclei_mask, connectivity=1)
+        labeled_cells  = measure.label(cell_mask, connectivity=2)
+        labeled_nuclei = measure.label(nuclei_mask, connectivity=2)
         
         cell_props = measure.regionprops(labeled_cells)
         nuc_props  = measure.regionprops(labeled_nuclei)
@@ -369,7 +369,7 @@ def process_tile(tile_index):
             else:
                 nucleus_mask_this = np.zeros_like(nuclei_mask, dtype=bool)
             
-            cytoplasm_mask_this = cell_mask_this & (~nucleus_mask_this)
+            cytoplasm_mask_this = np.logical_xor(cell_mask_this, nucleus_mask_this)
 
             # Focus TDP-43 intensities on cytoplasm
             cytoplasm_tdp43 = tdp43_img.copy()
@@ -393,7 +393,7 @@ def process_tile(tile_index):
             agg_props   = measure.regionprops(labeled_agg, intensity_image=tdp43_img)
 
             for agg in agg_props:
-                if agg.area <= 30:  # Add maximum size for agregates
+                if agg.area <= 60:  # Add maximum size for agregates
                     aggregate_measurements.append({
                         "TileIndex": tile_index,
                         "CellLabel": cell_label,
